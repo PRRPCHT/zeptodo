@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: light, dark;
+}
+@import "@fontsource/barlow-condensed/400.css";
+
+@theme {
+  --font-sans: "Barlow Condensed", ui-sans-serif, system-ui, sans-serif;
+}

@@ -1,0 +1,16 @@
+{
+	"name": "zeptodo",
+	"version": "0.1.0",
+	"private": true,
+	"scripts": {
+		"copy:fonts": "mkdir -p static/files && cp node_modules/@fontsource/barlow-condensed/files/barlow-condensed-latin-400-normal.woff2 node_modules/@fontsource/barlow-condensed/files/barlow-condensed-latin-400-normal.woff static/files/",
+		"build:css": "npm run copy:fonts && tailwindcss -i ./static/css/input.css -o ./static/app.css --minify",
+		"watch:css": "npm run copy:fonts && tailwindcss -i ./static/css/input.css -o ./static/app.css --watch"
+	},
+	"devDependencies": {
+		"@tailwindcss/cli": "4.3.0",
+		"tailwindcss": "4.3.0",
+		"daisyui": "5.5.19",
+		"@fontsource/barlow-condensed": "5.2.8"
+	}
+}

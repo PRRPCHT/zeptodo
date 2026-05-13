@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en" data-theme="{{ theme }}">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>{% block title %}Zeptodo{% endblock %}</title>
+		<link rel="stylesheet" href="/static/app.css" />
+		<link
+			rel="icon"
+			type="image/svg+xml"
+			href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%231d232a'/%3E%3Ctext x='50%25' y='54%25' text-anchor='middle' dominant-baseline='middle' font-family='sans-serif' font-weight='700' font-size='40' fill='%2393c5fd'%3EZ%3C/text%3E%3C/svg%3E"
+		/>
+		<script defer src="/static/vendor/htmx.min.js"></script>
+		<script defer src="/static/vendor/alpine.min.js"></script>
+		<style>
+			html[data-theme="dark"] .theme-icon-moon {
+				display: none;
+			}
+			html[data-theme="light"] .theme-icon-sun {
+				display: none;
+			}
+		</style>
+	</head>
+	<body
+		x-data
+		class="min-h-screen flex flex-col bg-base-100 text-base-content"
+	>
+		<header class="navbar bg-base-200 shadow-sm">
+			<div class="flex-1 px-2">
+				<a href="/" class="text-2xl font-semibold tracking-tight">Zeptodo</a>
+			</div>
+			<div class="flex-none px-2">
+				<form
+					method="post"
+					action="/theme/toggle"
+					hx-post="/theme/toggle"
+					hx-swap="none"
+					class="contents"
+				>
+					<button
+						type="submit"
+						class="btn btn-ghost btn-circle"
+						aria-label="Toggle theme"
+						@click="
+							const html = document.documentElement;
+							html.dataset.theme = html.dataset.theme === 'dark' ? 'light' : 'dark';
+						"
+					>
+						<svg
+							class="theme-icon-sun size-5"
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.75"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
+							<circle cx="12" cy="12" r="4" />
+							<path
+								d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+							/>
+						</svg>
+						<svg
+							class="theme-icon-moon size-5"
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.75"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
+							<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+						</svg>
+					</button>
+				</form>
+			</div>
+		</header>
+
+		<main class="container mx-auto flex-1 px-4 py-8 w-full">
+			{% block content %}{% endblock %}
+		</main>
+
+		<footer class="border-t border-base-200 px-4 py-2 text-xs text-base-content/50">
+			<div class="container mx-auto flex items-center justify-center gap-2">
+				<span>Zeptodo v{{ version }}</span>
+				<a
+					href="{{ repo_url }}"
+					class="link link-hover"
+					rel="noopener noreferrer"
+					target="_blank"
+					>GitHub</a
+				>
+			</div>
+		</footer>
+	</body>
+</html>

@@ -1,0 +1,23 @@
+[package]
+name = "zeptodo"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.8"
+axum-extra = { version = "0.12.6", features = ["cookie"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "trace"] }
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio-rustls", "macros", "migrate", "chrono"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+tracing-appender = "0.2"
+serde = { version = "1", features = ["derive"] }
+askama = "0.16.0"
+dotenvy = "0.15"
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+anyhow = "1"
+thiserror = "2"
+time = "0.3"

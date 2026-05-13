@@ -1,0 +1,7 @@
+/target
+/node_modules
+/static/app.css
+/static/files/
+/.env
+/data/*
+/logs
