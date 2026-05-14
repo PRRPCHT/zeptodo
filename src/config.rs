@@ -47,6 +47,14 @@ impl Config {
     }
 }
 
+/// Read a required environment variable, treating empty strings as missing.
+///
+/// ### Arguments
+/// - `key`: Name of the environment variable to read.
+///
+/// ### Returns
+/// - `Ok(String)`: The non-empty value of the variable.
+/// - `Err`: The variable is unset or set to an empty string.
 fn required(key: &str) -> Result<String> {
     let value = env::var(key)
         .ok()
@@ -55,6 +63,14 @@ fn required(key: &str) -> Result<String> {
     Ok(value)
 }
 
+/// Read an optional environment variable, treating empty strings as unset.
+///
+/// ### Arguments
+/// - `key`: Name of the environment variable to read.
+///
+/// ### Returns
+/// - `Some(String)`: The variable is set to a non-empty value.
+/// - `None`: The variable is unset or set to the empty string.
 fn optional(key: &str) -> Option<String> {
     env::var(key).ok().filter(|v| !v.is_empty())
 }

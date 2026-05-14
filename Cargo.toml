@@ -21,3 +21,12 @@ chrono-tz = "0.10"
 anyhow = "1"
 thiserror = "2"
 time = "0.3"
+argon2 = "0.5"
+rand = "0.8"
+base64 = "0.22"
+subtle = "2.6"
+tower-sessions = "0.14"
+tower-sessions-sqlx-store = { version = "0.15", features = ["sqlite"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

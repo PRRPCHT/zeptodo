@@ -8,8 +8,10 @@ use tower_http::trace::TraceLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
+mod auth;
 mod config;
 mod db;
+mod domain;
 mod web;
 
 /// Shared application state injected into handlers.
@@ -27,6 +29,9 @@ async fn main() -> Result<()> {
 
     tracing::info!("starting zeptodo");
     let pool = db::init(&cfg.database_url).await?;
+    domain::credentials::reconcile(&pool, &cfg).await?;
+
+    let session_layer = auth::session::build_layer(pool.clone(), &cfg).await?;
 
     let state = AppState {
         pool,
@@ -34,11 +39,17 @@ async fn main() -> Result<()> {
     };
 
     let app = Router::new()
-        .route("/", get(web::routes::index))
+        .route("/", get(web::routes::todos))
         .route("/healthz", get(web::routes::healthz))
+        .route(
+            "/login",
+            get(web::login::get_login).post(web::login::post_login),
+        )
+        .route("/logout", post(web::login::post_logout))
         .route("/theme/toggle", post(web::theme::toggle))
         .nest_service("/static", ServeDir::new("static"))
         .layer(TraceLayer::new_for_http())
+        .layer(session_layer)
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(&cfg.bind_addr).await?;

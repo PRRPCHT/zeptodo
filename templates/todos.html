@@ -1,0 +1,10 @@
+{% extends "base.html" %} {% block title %}Tasks - Zeptodo{% endblock %} {% block content %}
+<section class="prose max-w-none">
+	{% match layout.username %} {% when Some with (name) %}
+	<h1>Welcome, {{ name }}</h1>
+	{% when None %}
+	<h1>Tasks</h1>
+	{% endmatch %}
+	<p>The master to-do list will live here.</p>
+</section>
+{% endblock %}
