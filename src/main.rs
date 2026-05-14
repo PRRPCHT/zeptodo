@@ -39,13 +39,21 @@ async fn main() -> Result<()> {
     };
 
     let app = Router::new()
-        .route("/", get(web::routes::todos))
+        .route("/", get(web::tasks::dashboard))
         .route("/healthz", get(web::routes::healthz))
         .route(
             "/login",
             get(web::login::get_login).post(web::login::post_login),
         )
         .route("/logout", post(web::login::post_logout))
+        .route("/tasks", post(web::tasks::create_task))
+        .route("/tasks/{id}", post(web::tasks::update_task))
+        .route("/tasks/{id}/status", post(web::tasks::set_status))
+        .route("/tasks/{id}/delete", post(web::tasks::delete_task))
+        .route(
+            "/tasks/show-terminal",
+            post(web::tasks::toggle_show_terminal),
+        )
         .route("/theme/toggle", post(web::theme::toggle))
         .nest_service("/static", ServeDir::new("static"))
         .layer(TraceLayer::new_for_http())

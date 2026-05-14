@@ -1,0 +1,218 @@
+<div id="task-list" class="divide-y divide-base-200">
+	{% if tasks.is_empty() %}
+	<div class="py-12 text-center text-sm opacity-50">No tasks. Add one above.</div>
+	{% else %} {% for task in tasks %}
+	<div id="task-{{ task.id }}" x-data="{ editing: false, showDesc: false }" class="group py-3">
+		<div x-show="!editing" class="flex flex-wrap items-center gap-2 sm:gap-x-3 gap-y-1">
+			<span class="flex-1 min-w-0 text-base wrap-break-word {% if task.is_done %}line-through opacity-50{% endif %}{% if task.is_cancelled %}line-through opacity-40{% endif %}">
+				{{ task.title }}
+			</span>
+			{% if task.has_description %}
+			<button
+				type="button"
+				@click="showDesc = !showDesc"
+				class="btn btn-ghost btn-xs btn-circle opacity-60 hover:opacity-100 shrink-0"
+				:aria-label="showDesc ? 'Hide description' : 'Show description'"
+				:aria-expanded="showDesc"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					class="size-3.5"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					aria-hidden="true"
+					x-show="!showDesc"
+				>
+					<line x1="12" y1="5" x2="12" y2="19"></line>
+					<line x1="5" y1="12" x2="19" y2="12"></line>
+				</svg>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					class="size-3.5"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					aria-hidden="true"
+					x-show="showDesc"
+					x-cloak
+				>
+					<line x1="5" y1="12" x2="19" y2="12"></line>
+				</svg>
+			</button>
+			{% endif %}
+			<div class="dropdown dropdown-bottom dropdown-end shrink-0">
+					<button
+						tabindex="0"
+						type="button"
+						class="btn btn-ghost btn-sm gap-2 normal-case font-normal px-2"
+						aria-label="Status: {{ task.status_label }}, menu for {{ task.title }}"
+					>
+						<span class="inline-flex {{ task.status_text_class }}">{{ task.status_icon_svg|safe }}</span>
+						<!--<span class="hidden sm:inline">{{ task.status_label }}</span>-->
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							class="size-3 opacity-50 hidden sm:inline"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
+							<polyline points="6 9 12 15 18 9"></polyline>
+						</svg>
+					</button>
+					<ul
+						tabindex="0"
+						class="dropdown-content menu bg-base-100 border border-base-200 rounded-box shadow-lg z-20 w-36 p-1"
+					>
+						<li class="menu-title">
+							<span class="uppercase tracking-wider">Status</span>
+						</li>
+						{% for option in status_options %}
+						<li>
+							<button
+								type="button"
+								hx-post="/tasks/{{ task.id }}/status"
+								hx-target="#task-list"
+								hx-swap="outerHTML"
+								hx-vals='{"_csrf": "{{ csrf_token }}", "status": "{{ option.value }}"}'
+								class="flex items-center gap-2 w-full {% if option.value == task.status %}font-medium{% endif %}"
+							>
+								<span class="w-4 inline-flex items-center justify-center {{ option.text_class }}">
+									<span class="inline-flex size-4">{{ option.icon_svg|safe }}</span>
+								</span>
+								<span class="flex-1 text-left">{{ option.label }}</span>
+								{% if option.value == task.status %}
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									class="size-3 opacity-60"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2.5"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									aria-hidden="true"
+								>
+									<polyline points="20 6 9 17 4 12"></polyline>
+								</svg>
+								{% endif %}
+							</button>
+						</li>
+						{% endfor %}
+						<li class="menu-title">
+							<span class="uppercase tracking-wider">Action</span>
+						</li>
+						<li>
+							<button
+								type="button"
+								@click="editing = true; document.activeElement && document.activeElement.blur()"
+								class="flex items-center gap-2 w-full"
+							>
+								<span class="w-4 inline-flex items-center justify-center">
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										class="size-3.5 opacity-70"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										aria-hidden="true"
+									>
+										<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+										<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+									</svg>
+								</span>
+								<span>Edit</span>
+							</button>
+						</li>
+						<li>
+							<button
+								type="button"
+								hx-post="/tasks/{{ task.id }}/delete"
+								hx-target="#task-list"
+								hx-swap="outerHTML"
+								hx-vals='{"_csrf": "{{ csrf_token }}"}'
+								hx-confirm="Delete this task?"
+								class="flex items-center gap-2 w-full text-error"
+							>
+								<span class="w-4 inline-flex items-center justify-center">
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										class="size-3.5"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										aria-hidden="true"
+									>
+										<polyline points="3 6 5 6 21 6"></polyline>
+										<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+									</svg>
+								</span>
+								<span>Delete</span>
+							</button>
+						</li>
+					</ul>
+				</div>
+				{% if task.has_description %}
+				<div
+					x-show="showDesc"
+					x-cloak
+					x-transition.opacity
+					class="basis-full w-full text-sm whitespace-pre-line opacity-70 max-w-prose"
+				>
+					{{ task.description_text }}
+				</div>
+				{% endif %}
+			</div>
+
+		<div x-show="editing" x-cloak class="space-y-2">
+			<form
+				method="post"
+				action="/tasks/{{ task.id }}"
+				hx-post="/tasks/{{ task.id }}"
+				hx-target="#task-list"
+				hx-swap="outerHTML"
+				class="space-y-2"
+				@htmx:after-request="editing = false"
+			>
+				<input type="hidden" name="_csrf" value="{{ csrf_token }}" />
+				<input
+					type="text"
+					name="title"
+					required
+					maxlength="128"
+					value="{{ task.title }}"
+					class="w-full bg-transparent border-0 border-b-2 border-base-300 rounded-none px-0 py-2 focus:outline-none focus:border-primary transition-colors"
+					x-init="$nextTick(() => editing && $el.focus())"
+				/>
+				<textarea
+					name="description"
+					rows="3"
+					maxlength="16384"
+					placeholder="Description"
+					class="w-full bg-transparent border-0 border-b-2 border-base-300 rounded-none px-0 py-2 focus:outline-none focus:border-primary transition-colors resize-y"
+				>{{ task.description_text }}</textarea>
+				<div class="flex justify-end gap-2">
+					<button type="button" class="btn btn-ghost btn-sm" @click="editing = false">Cancel</button>
+					<button type="submit" class="btn btn-primary btn-outline btn-sm">Save</button>
+				</div>
+			</form>
+		</div>
+	</div>
+	{% endfor %} {% endif %}
+</div>

@@ -1,9 +1,13 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 @plugin "daisyui" {
-  themes: light, dark;
+	themes: light, dark;
 }
-@import "@fontsource/barlow-condensed/400.css";
+@import '@fontsource/barlow-condensed/400.css';
 
 @theme {
-  --font-sans: "Barlow Condensed", ui-sans-serif, system-ui, sans-serif;
+	--font-sans: 'Barlow Condensed', ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+	font-size: 1.1em;
 }
