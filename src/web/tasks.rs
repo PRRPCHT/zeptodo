@@ -12,6 +12,7 @@ use crate::auth::csrf;
 use crate::auth::guard::AuthedUser;
 use crate::domain::task::{self, NewTask, Status, Task, UpdateTask};
 use crate::web::layout::{self, LayoutContext};
+use crate::web::markdown;
 use crate::web::theme::Theme;
 
 const SESSION_SHOW_TERMINAL_KEY: &str = "show_terminal";
@@ -73,6 +74,7 @@ pub struct TaskView {
     pub id: i64,
     pub title: String,
     pub description_text: String,
+    pub description_html: String,
     pub has_description: bool,
     pub status: &'static str,
     pub status_label: &'static str,
@@ -98,11 +100,17 @@ fn build_view(task: &Task) -> TaskView {
     };
     let description_text = task.description.clone().unwrap_or_default();
     let has_description = !description_text.trim().is_empty();
+    let description_html = if has_description {
+        markdown::render(&description_text)
+    } else {
+        String::new()
+    };
 
     TaskView {
         id: task.id,
         title: task.title.clone(),
         description_text,
+        description_html,
         has_description,
         status: task.status.as_str(),
         status_label,

@@ -3,7 +3,8 @@
 	<div class="py-12 text-center text-sm opacity-50">No tasks. Add one above.</div>
 	{% else %} {% for task in tasks %}
 	<div id="task-{{ task.id }}" x-data="{ editing: false, showDesc: false }" class="group py-3">
-		<div x-show="!editing" class="flex flex-wrap items-center gap-2 sm:gap-x-3 gap-y-1">
+		<div x-show="!editing" class="space-y-1">
+			<div class="flex flex-wrap items-center gap-2 sm:gap-x-3 gap-y-1">
 			<span class="flex-1 min-w-0 text-base wrap-break-word {% if task.is_done %}line-through opacity-50{% endif %}{% if task.is_cancelled %}line-through opacity-40{% endif %}">
 				{{ task.title }}
 			</span>
@@ -168,17 +169,18 @@
 						</li>
 					</ul>
 				</div>
-				{% if task.has_description %}
-				<div
-					x-show="showDesc"
-					x-cloak
-					x-transition.opacity
-					class="basis-full w-full text-sm whitespace-pre-line opacity-70 max-w-prose"
-				>
-					{{ task.description_text }}
-				</div>
-				{% endif %}
 			</div>
+			{% if task.has_description %}
+			<div
+				x-show="showDesc"
+				x-cloak
+				x-transition.opacity
+				class="text-sm opacity-70 max-w-prose task-description"
+			>
+				{{ task.description_html|safe }}
+			</div>
+			{% endif %}
+		</div>
 
 		<div x-show="editing" x-cloak class="space-y-2">
 			<form
