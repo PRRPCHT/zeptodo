@@ -236,6 +236,79 @@ pub async fn set_status(pool: &SqlitePool, id: i64, status: Status) -> Result<Op
     get(pool, id).await
 }
 
+/// Rewrite positions to match a new visible ordering.
+///
+/// ### Description
+/// The supplied `ordered_ids` are interpreted as the user-visible order. The
+/// set of positions those ids currently occupy is reused: after the call, the
+/// ids end up sorted into that same set of positions but in the supplied
+/// order. Hidden rows keep their positions untouched.
+///
+/// To stay inside the `UNIQUE(position)` constraint mid-rewrite, the rows are
+/// first parked at distinct negative positions, then assigned their final
+/// values inside the same transaction.
+///
+/// ### Arguments
+/// - `pool`: SQLite pool with migrations applied.
+/// - `ordered_ids`: Task ids in their new visible order. Unknown ids are
+///   ignored, and rows whose status is `Done` or `Cancelled` are skipped so
+///   terminal tasks keep their positions.
+///
+/// ### Returns
+/// - `Ok(usize)`: Number of rows whose positions were actually rewritten.
+/// - `Err`: SQLite query failed.
+pub async fn reorder(pool: &SqlitePool, ordered_ids: &[i64]) -> Result<usize> {
+    if ordered_ids.is_empty() {
+        return Ok(0);
+    }
+    let mut tx = pool.begin().await.context("starting reorder tx")?;
+
+    let mut current_positions: Vec<i64> = Vec::with_capacity(ordered_ids.len());
+    let mut effective_ids: Vec<i64> = Vec::with_capacity(ordered_ids.len());
+    for id in ordered_ids {
+        let row: Option<(i64, String)> =
+            sqlx::query_as("SELECT position, status FROM tasks WHERE id = ?")
+                .bind(id)
+                .fetch_optional(&mut *tx)
+                .await
+                .context("reading current position")?;
+        if let Some((position, status)) = row {
+            let parsed =
+                Status::parse(&status).map_err(|e| anyhow!("invalid stored status: {e}"))?;
+            if matches!(parsed, Status::Done | Status::Cancelled) {
+                continue;
+            }
+            current_positions.push(position);
+            effective_ids.push(*id);
+        }
+    }
+    if effective_ids.is_empty() {
+        return Ok(0);
+    }
+    let mut slots = current_positions.clone();
+    slots.sort_unstable();
+
+    for (i, id) in effective_ids.iter().enumerate() {
+        let parking = -(i as i64) - 1;
+        sqlx::query("UPDATE tasks SET position = ? WHERE id = ?")
+            .bind(parking)
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .context("parking row for reorder")?;
+    }
+    for (i, id) in effective_ids.iter().enumerate() {
+        sqlx::query("UPDATE tasks SET position = ? WHERE id = ?")
+            .bind(slots[i])
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .context("writing final position")?;
+    }
+    tx.commit().await.context("committing reorder tx")?;
+    Ok(effective_ids.len())
+}
+
 /// Delete a task by id.
 ///
 /// ### Arguments
@@ -342,6 +415,75 @@ mod tests {
         ] {
             assert_eq!(Status::parse(s.as_str()).unwrap(), s);
         }
+    }
+
+    #[tokio::test]
+    async fn reorder_rewrites_visible_ids_only() {
+        let pool = pool().await;
+        let a = create(&pool, new("a")).await.unwrap();
+        let b = create(&pool, new("b")).await.unwrap();
+        let c = create(&pool, new("c")).await.unwrap();
+        let d = create(&pool, new("d")).await.unwrap();
+        set_status(&pool, b.id, Status::Done).await.unwrap();
+
+        let n = reorder(&pool, &[d.id, a.id, c.id]).await.unwrap();
+        assert_eq!(n, 3);
+
+        let visible = list(&pool, false).await.unwrap();
+        let visible_titles: Vec<_> = visible.iter().map(|t| t.title.as_str()).collect();
+        assert_eq!(visible_titles, vec!["d", "a", "c"]);
+
+        let all = list(&pool, true).await.unwrap();
+        let b_after = all.iter().find(|t| t.id == b.id).unwrap();
+        assert_eq!(b_after.position, b.position);
+    }
+
+    #[tokio::test]
+    async fn reorder_keeps_position_uniqueness() {
+        let pool = pool().await;
+        let a = create(&pool, new("a")).await.unwrap();
+        let b = create(&pool, new("b")).await.unwrap();
+        let c = create(&pool, new("c")).await.unwrap();
+
+        reorder(&pool, &[c.id, b.id, a.id]).await.unwrap();
+        let all = list(&pool, true).await.unwrap();
+        let mut positions: Vec<i64> = all.iter().map(|t| t.position).collect();
+        positions.sort_unstable();
+        positions.dedup();
+        assert_eq!(positions.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn reorder_ignores_unknown_ids() {
+        let pool = pool().await;
+        let a = create(&pool, new("a")).await.unwrap();
+        let b = create(&pool, new("b")).await.unwrap();
+        let n = reorder(&pool, &[b.id, 9999, a.id]).await.unwrap();
+        assert_eq!(n, 2);
+        let visible = list(&pool, false).await.unwrap();
+        let titles: Vec<_> = visible.iter().map(|t| t.title.as_str()).collect();
+        assert_eq!(titles, vec!["b", "a"]);
+    }
+
+    #[tokio::test]
+    async fn reorder_skips_terminal_rows() {
+        let pool = pool().await;
+        let a = create(&pool, new("a")).await.unwrap();
+        let b = create(&pool, new("b")).await.unwrap();
+        let c = create(&pool, new("c")).await.unwrap();
+        set_status(&pool, b.id, Status::Done).await.unwrap();
+        set_status(&pool, c.id, Status::Cancelled).await.unwrap();
+
+        let n = reorder(&pool, &[c.id, b.id, a.id]).await.unwrap();
+        assert_eq!(n, 1);
+
+        let all = list(&pool, true).await.unwrap();
+        let a_after = all.iter().find(|t| t.id == a.id).unwrap();
+        let b_after = all.iter().find(|t| t.id == b.id).unwrap();
+        let c_after = all.iter().find(|t| t.id == c.id).unwrap();
+        assert_eq!(a_after.position, a.position);
+        assert_eq!(b_after.position, b.position);
+        assert_eq!(c_after.position, c.position);
     }
 
     #[tokio::test]

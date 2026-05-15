@@ -348,6 +348,56 @@ pub async fn delete_task(
     }
 }
 
+/// Decoded body of the `POST /tasks/reorder` form.
+#[derive(Debug, Deserialize)]
+pub struct ReorderForm {
+    #[serde(rename = "_csrf")]
+    pub csrf: String,
+    pub ids: String,
+}
+
+/// Rewrite positions to match a new visible ordering produced by drag-and-drop.
+///
+/// ### Description
+/// `ids` is a comma-separated list of task ids in their new visible order.
+/// Empty entries are ignored; unparseable ids fail the whole request with 400.
+///
+/// ### Arguments
+/// - `state`: Shared application state.
+/// - `session`: tower-sessions session, used to validate the CSRF token.
+/// - `headers`: Request headers, used to detect HTMX callers.
+/// - `form`: Decoded form body. `ids` is a comma-separated list of task ids.
+///
+/// ### Returns
+/// - `Response`: HTMX fragment with the updated list on `HX-Request`, otherwise
+///   a 302 redirect to `/`. 400 on invalid input, 403 on CSRF mismatch, 500
+///   on backend errors.
+pub async fn reorder_tasks(
+    State(state): State<AppState>,
+    session: Session,
+    headers: HeaderMap,
+    Form(form): Form<ReorderForm>,
+) -> Response {
+    if !csrf_ok(&session, &form.csrf).await {
+        return forbidden_csrf();
+    }
+    let mut ids: Vec<i64> = Vec::new();
+    for raw in form.ids.split(',') {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        match trimmed.parse::<i64>() {
+            Ok(v) => ids.push(v),
+            Err(_) => return bad_request("invalid id in reorder list"),
+        }
+    }
+    if let Err(err) = task::reorder(&state.pool, &ids).await {
+        return internal_error("reordering tasks failed", err);
+    }
+    respond_with_list(state, session, headers).await
+}
+
 /// Decoded body of the `POST /tasks/show-terminal` form (CSRF token only).
 #[derive(Debug, Deserialize)]
 pub struct ToggleForm {

@@ -50,6 +50,7 @@ async fn main() -> Result<()> {
         .route("/tasks/{id}", post(web::tasks::update_task))
         .route("/tasks/{id}/status", post(web::tasks::set_status))
         .route("/tasks/{id}/delete", post(web::tasks::delete_task))
+        .route("/tasks/reorder", post(web::tasks::reorder_tasks))
         .route(
             "/tasks/show-terminal",
             post(web::tasks::toggle_show_terminal),
