@@ -21,7 +21,7 @@ block content %}
 			<input type="hidden" name="_csrf" value="{{ csrf_token }}" />
 			<button
 				type="submit"
-				class="btn btn-ghost btn-xs text-xs uppercase tracking-wider opacity-60 hover:opacity-100"
+				class="btn btn-ghost btn-xs text-xs uppercase tracking-wider opacity-60 hover:opacity-100 font-normal"
 			>
 				{% if show_terminal %}Hide done and cancelled{% else %}Show done and cancelled{% endif %}
 			</button>
@@ -86,7 +86,7 @@ block content %}
 					<line x1="5" y1="12" x2="19" y2="12"></line>
 				</svg>
 			</button>
-			<button type="submit" class="btn btn-primary btn-outline btn-sm">Save</button>
+			<button type="submit" class="btn btn-primary btn-outline btn-sm font-normal uppercase">Save</button>
 		</div>
 		<textarea
 			x-show="expanded"

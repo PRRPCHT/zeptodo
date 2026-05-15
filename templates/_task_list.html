@@ -1,6 +1,6 @@
 <div
 	id="task-list"
-	class="divide-y divide-base-200"
+	class="divide-y divide-base-200 flex flex-col gap-2"
 	data-csrf="{{ csrf_token }}"
 	x-data="taskList()"
 	x-init="init($el)"
@@ -12,15 +12,15 @@
 		id="task-{{ task.id }}"
 		data-task-id="{{ task.id }}"
 		x-data="{ editing: false, showDesc: false }"
-		class="group py-3{% if task.is_done || task.is_cancelled %} task-row-terminal{% endif %}"
+		class="group py-1{% if task.is_done || task.is_cancelled %} task-row-terminal{% endif %} border border-base-200 rounded bg-base-200"
 	>
 		<div x-show="!editing" class="space-y-1">
 			<div class="flex flex-wrap items-center gap-2 sm:gap-x-3 gap-y-1">
 			{% if task.is_done || task.is_cancelled %}
-			<span class="shrink-0 inline-block w-3 h-6" aria-hidden="true"></span>
+			<span class="shrink-0 inline-block w-6 h-6" aria-hidden="true"></span>
 			{% else %}
 			<span
-				class="drag-handle shrink-0 inline-flex items-center justify-center w-3 h-6 cursor-grab opacity-40 hover:opacity-80 touch-none"
+				class="drag-handle shrink-0 inline-flex items-center justify-center w-6 h-6 cursor-grab opacity-40 hover:opacity-80 touch-none"
 				aria-hidden="true"
 				title="Drag to reorder"
 			>
@@ -210,7 +210,7 @@
 				x-show="showDesc"
 				x-cloak
 				x-transition.opacity
-				class="text-sm opacity-70 max-w-prose task-description"
+				class="text-sm opacity-70 max-w-prose task-description px-2"
 			>
 				{{ task.description_html|safe }}
 			</div>
@@ -245,8 +245,8 @@
 					class="w-full bg-transparent border-0 border-b-2 border-base-300 rounded-none px-0 py-2 focus:outline-none focus:border-primary transition-colors resize-y"
 				>{{ task.description_text }}</textarea>
 				<div class="flex justify-end gap-2">
-					<button type="button" class="btn btn-ghost btn-sm" @click="editing = false">Cancel</button>
-					<button type="submit" class="btn btn-primary btn-outline btn-sm">Save</button>
+					<button type="button" class="btn btn-ghost btn-sm uppercase" @click="editing = false">Cancel</button>
+					<button type="submit" class="btn btn-primary btn-outline btn-sm uppercase">Save</button>
 				</div>
 			</form>
 		</div>
