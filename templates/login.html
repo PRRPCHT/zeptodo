@@ -1,7 +1,9 @@
-{% extends "base.html" %} {% block title %}Sign in - Zeptodo{% endblock %} {%
-block content %}
+{% extends "base.html" %} {% block title %}Sign in - Zeptodo{% endblock %}
+{% block heading %}
+<h1 class="text-4xl font-light tracking-tight">Sign in</h1>
+{% endblock %}
+{% block content %}
 <section class="max-w-sm mx-auto">
-	<h1 class="text-3xl font-semibold mb-6">Sign in</h1>
 	{% match error %} {% when Some with (msg) %}
 	<div role="alert" class="alert alert-error mb-4">
 		<span>{{ msg }}</span>

@@ -1,33 +1,13 @@
-{% extends "base.html" %} {% block title %}Tasks - Zeptodo{% endblock %} {%
-block content %}
-<section class="max-w-2xl mx-auto space-y-8">
-	<header class="flex items-end justify-between gap-4">
-		<div>
-			{% match layout.username %} {% when Some with (name) %}
-			<p class="text-sm uppercase tracking-[0.2em] opacity-50">Hello</p>
-			<h1 class="text-4xl font-light tracking-tight">{{ name }}</h1>
-			{% when None %}
-			<h1 class="text-4xl font-light tracking-tight">Tasks</h1>
-			{% endmatch %}
-		</div>
-		<form
-			method="post"
-			action="/tasks/show-terminal"
-			hx-post="/tasks/show-terminal"
-			hx-target="#task-list"
-			hx-swap="outerHTML"
-			class="contents"
-		>
-			<input type="hidden" name="_csrf" value="{{ csrf_token }}" />
-			<button
-				type="submit"
-				class="btn btn-ghost btn-xs text-xs uppercase tracking-wider opacity-60 hover:opacity-100 font-normal"
-			>
-				{% if show_terminal %}Hide done and cancelled{% else %}Show done and cancelled{% endif %}
-			</button>
-		</form>
-	</header>
-
+{% extends "base.html" %} {% block title %}Tasks - Zeptodo{% endblock %}
+{% block heading %}
+{% match layout.username %} {% when Some with (name) %}
+<h1 class="text-4xl font-light tracking-tight capitalize">{{ name }}'s tasks</h1>
+{% when None %}
+<h1 class="text-4xl font-light tracking-tight">Tasks</h1>
+{% endmatch %}
+{% endblock %}
+{% block content %}
+<section class="max-w-2xl mx-auto space-y-4">
 	<form
 		method="post"
 		action="/tasks"
@@ -36,7 +16,7 @@ block content %}
 		hx-swap="outerHTML"
 		hx-on::after-request="if(event.detail.successful) { this.reset(); expanded = false; }"
 		x-data="{ expanded: false }"
-		class="pb-3"
+		class=""
 	>
 		<input type="hidden" name="_csrf" value="{{ csrf_token }}" />
 		<div class="flex items-center gap-2">
@@ -99,6 +79,24 @@ block content %}
 			class="w-full mt-2 bg-transparent border-0 border-b-2 border-base-300 rounded-none px-0 py-2 focus:outline-none focus:border-primary transition-colors resize-y"
 		></textarea>
 	</form>
+	<div class="flex justify-end items-center">
+	<form
+		method="post"
+		action="/tasks/show-terminal"
+		hx-post="/tasks/show-terminal"
+		hx-target="#task-list"
+		hx-swap="outerHTML"
+		class="contents"
+	>
+		<input type="hidden" name="_csrf" value="{{ csrf_token }}" />
+		<button
+			type="submit"
+			class="btn btn-ghost btn-xs text-xs uppercase tracking-wider opacity-60 hover:opacity-100 font-normal"
+		>
+			{% if show_terminal %}Hide done and cancelled{% else %}Show done and cancelled{% endif %}
+		</button>
+	</form>
+	</div>
 
 	{% include "_task_list.html" %}
 

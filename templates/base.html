@@ -27,76 +27,82 @@
 		x-data
 		class="min-h-screen flex flex-col bg-base-100 text-base-content"
 	>
-		<header class="navbar bg-base-200 shadow-sm">
-			<div class="flex-1 px-2">
-				<a href="/" class="text-2xl font-semibold tracking-tight">Zeptodo</a>
-			</div>
-			<div class="flex-none px-2 flex items-center gap-2">
-				{% match layout.username %} {% when Some with (name) %}
-				<span class="hidden sm:inline text-sm opacity-70">{{ name }}</span>
-				<form
-					method="post"
-					action="/logout"
-					hx-post="/logout"
-					hx-swap="none"
-					class="contents"
-				>
-					<input type="hidden" name="_csrf" value="{{ layout.csrf_token }}" />
-					<button type="submit" class="btn btn-ghost btn-sm">Logout</button>
-				</form>
-				{% when None %} {% endmatch %}
-				<form
-					method="post"
-					action="/theme/toggle"
-					hx-post="/theme/toggle"
-					hx-swap="none"
-					class="contents"
-				>
-					<input type="hidden" name="_csrf" value="{{ layout.csrf_token }}" />
-					<button
-						type="submit"
-						class="btn btn-ghost btn-circle"
-						aria-label="Toggle theme"
-						@click="
-							const html = document.documentElement;
-							html.dataset.theme = html.dataset.theme === 'dark' ? 'light' : 'dark';
-						"
+		<main class="container mx-auto flex-1 px-2 md:px-4 pt-4 pb-8 w-full">
+			<header class="max-w-2xl mx-auto flex items-end justify-between gap-4 mb-6">
+				<div>
+					<p class="text-sm uppercase tracking-[0.2em] opacity-50">Zeptodo</p>
+					{% block heading %}
+					<h1 class="text-4xl font-light tracking-tight">Zeptodo</h1>
+					{% endblock %}
+				</div>
+				<div class="flex items-center gap-1">
+					{% match layout.username %} {% when Some with (_name) %}
+					<form
+						method="post"
+						action="/logout"
+						hx-post="/logout"
+						hx-swap="none"
+						class="contents"
 					>
-						<svg
-							class="theme-icon-sun size-5"
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.75"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							aria-hidden="true"
+						<input type="hidden" name="_csrf" value="{{ layout.csrf_token }}" />
+						<button
+							type="submit"
+							class="btn btn-ghost btn-sm font-normal uppercase tracking-wider opacity-60 hover:opacity-100"
 						>
-							<circle cx="12" cy="12" r="4" />
-							<path
-								d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
-							/>
-						</svg>
-						<svg
-							class="theme-icon-moon size-5"
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.75"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							aria-hidden="true"
+							Logout
+						</button>
+					</form>
+					{% when None %} {% endmatch %}
+					<form
+						method="post"
+						action="/theme/toggle"
+						hx-post="/theme/toggle"
+						hx-swap="none"
+						class="contents"
+					>
+						<input type="hidden" name="_csrf" value="{{ layout.csrf_token }}" />
+						<button
+							type="submit"
+							class="btn btn-ghost btn-sm btn-circle opacity-60 hover:opacity-100"
+							aria-label="Toggle theme"
+							@click="
+								const html = document.documentElement;
+								html.dataset.theme = html.dataset.theme === 'dark' ? 'light' : 'dark';
+							"
 						>
-							<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
-						</svg>
-					</button>
-				</form>
-			</div>
-		</header>
-
-		<main class="container mx-auto flex-1 px-2 md:px-4 py-8 w-full">
+							<svg
+								class="theme-icon-sun size-5"
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.75"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								aria-hidden="true"
+							>
+								<circle cx="12" cy="12" r="4" />
+								<path
+									d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+								/>
+							</svg>
+							<svg
+								class="theme-icon-moon size-5"
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="1.75"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								aria-hidden="true"
+							>
+								<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
+							</svg>
+						</button>
+					</form>
+				</div>
+			</header>
 			{% block content %}{% endblock %}
 		</main>
 
