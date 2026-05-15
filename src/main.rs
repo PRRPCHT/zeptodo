@@ -55,6 +55,19 @@ async fn main() -> Result<()> {
             "/tasks/show-terminal",
             post(web::tasks::toggle_show_terminal),
         )
+        .route(
+            "/api-keys",
+            get(web::api_keys::index).post(web::api_keys::create),
+        )
+        .route(
+            "/api-keys/{id}/edit_expiry",
+            post(web::api_keys::edit_expiry),
+        )
+        .route(
+            "/api-keys/{id}/edit_description",
+            post(web::api_keys::edit_description),
+        )
+        .route("/api-keys/{id}/delete", post(web::api_keys::delete))
         .route("/theme/toggle", post(web::theme::toggle))
         .nest_service("/static", ServeDir::new("static"))
         .layer(TraceLayer::new_for_http())

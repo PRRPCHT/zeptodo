@@ -37,6 +37,16 @@
 				</div>
 				<div class="flex items-center gap-1">
 					{% match layout.username %} {% when Some with (_name) %}
+					<a
+						href="/api-keys"
+						class="btn btn-ghost btn-sm font-normal uppercase tracking-wider opacity-60 hover:opacity-100"
+						>API keys</a
+					>
+					<a
+						href="/"
+						class="btn btn-ghost btn-sm font-normal uppercase tracking-wider opacity-60 hover:opacity-100"
+						>Tasks</a
+					>
 					<form
 						method="post"
 						action="/logout"

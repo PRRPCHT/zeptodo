@@ -2957,6 +2957,7 @@ dependencies = [
  "pulldown-cmark",
  "rand",
  "serde",
+ "sha2",
  "sqlx",
  "subtle",
  "thiserror 2.0.18",

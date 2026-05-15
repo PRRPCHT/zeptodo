@@ -1,0 +1,242 @@
+{% extends "base.html" %} {% block title %}API keys - Zeptodo{% endblock %}
+{% block heading %}
+<h1 class="text-4xl font-light tracking-tight">API keys</h1>
+{% endblock %}
+{% block content %}
+<section class="max-w-2xl mx-auto space-y-6">
+	{% match error %} {% when Some with (msg) %}
+	<div role="alert" class="alert alert-error">
+		<span>{{ msg }}</span>
+	</div>
+	{% when None %} {% endmatch %}
+
+	{% match created_plaintext %} {% when Some with (plaintext) %}
+	<div
+		role="alert"
+		x-data="{ copied: false }"
+		class="alert alert-success flex-col items-stretch gap-3"
+	>
+		<div class="flex items-start gap-2">
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				class="size-5 mt-0.5 shrink-0"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				aria-hidden="true"
+			>
+				<circle cx="12" cy="12" r="10" />
+				<line x1="12" y1="8" x2="12" y2="12" />
+				<line x1="12" y1="16" x2="12.01" y2="16" />
+			</svg>
+			<div class="flex-1 text-sm">
+				<p class="font-semibold mb-1">
+					Copy this key now &mdash; it won't be shown again.
+				</p>
+				<p class="opacity-80">
+					{% match created_prefix %} {% when Some with (prefix) %}Prefix
+					<code class="font-mono">{{ prefix }}</code>{% when None %}{% endmatch %}
+				</p>
+			</div>
+		</div>
+		<div class="flex items-center gap-2">
+			<input
+				type="text"
+				readonly
+				value="{{ plaintext }}"
+				x-ref="plaintext"
+				@focus="$el.select()"
+				class="input input-bordered w-full font-mono text-sm"
+			/>
+			<button
+				type="button"
+				class="btn btn-sm"
+				@click="
+					navigator.clipboard.writeText($refs.plaintext.value);
+					copied = true;
+					setTimeout(() => copied = false, 1500);
+				"
+			>
+				<span x-show="!copied">Copy</span>
+				<span x-show="copied" x-cloak>Copied</span>
+			</button>
+		</div>
+	</div>
+	{% when None %} {% endmatch %}
+
+	<form method="post" action="/api-keys" class="space-y-3">
+		<input type="hidden" name="_csrf" value="{{ csrf_token }}" />
+		<div class="flex flex-wrap items-end gap-2">
+			<label class="form-control flex-1 min-w-48">
+				<span class="label-text text-xs uppercase tracking-wider opacity-60"
+					>Description</span
+				>
+				<input
+					type="text"
+					name="description"
+					maxlength="200"
+					placeholder="What is this key for?"
+					class="input input-bordered w-full"
+				/>
+			</label>
+			<label class="form-control">
+				<span class="label-text text-xs uppercase tracking-wider opacity-60"
+					>Expires</span
+				>
+				<select name="expiry" class="select select-bordered">
+					{% for option in expiry_options %}
+					<option value="{{ option.value }}"{% if option.value == "365" %} selected{% endif %}>
+						{{ option.label }}
+					</option>
+					{% endfor %}
+				</select>
+			</label>
+			<button
+				type="submit"
+				class="btn btn-primary btn-outline font-normal uppercase"
+			>
+				Create key
+			</button>
+		</div>
+	</form>
+
+	{% if keys.is_empty() %}
+	<p class="py-12 text-center text-sm opacity-50">
+		No API keys yet. Create one above.
+	</p>
+	{% else %}
+	<ul class="space-y-3">
+		{% for key in keys %}
+		<li
+			class="border border-base-200 bg-base-200 rounded p-3 space-y-3"
+			x-data="{ editingDescription: false, editingExpiry: false }"
+		>
+			<div class="flex flex-wrap items-center gap-3">
+				<code class="font-mono text-sm">{{ key.key_prefix }}&hellip;</code>
+				<span
+					class="flex-1 min-w-0 text-sm wrap-break-word"
+					x-show="!editingDescription"
+				>
+					{% if key.description_text.is_empty() %}
+					<span class="opacity-50 italic">No description</span>
+					{% else %}{{ key.description_text }}{% endif %}
+				</span>
+				<button
+					type="button"
+					class="btn btn-ghost btn-sm font-normal"
+					@click="editingDescription = true"
+					x-show="!editingDescription"
+					aria-label="Edit description"
+				>
+					Edit
+				</button>
+				<form
+					method="post"
+					action="/api-keys/{{ key.id }}/delete"
+					hx-post="/api-keys/{{ key.id }}/delete"
+					hx-confirm="Delete this API key? This cannot be undone."
+					class="contents"
+				>
+					<input type="hidden" name="_csrf" value="{{ csrf_token }}" />
+					<button
+						type="submit"
+						class="btn btn-ghost btn-sm text-error font-normal"
+						aria-label="Delete key {{ key.key_prefix }}"
+					>
+						Delete
+					</button>
+				</form>
+			</div>
+
+			<form
+				x-show="editingDescription"
+				x-cloak
+				method="post"
+				action="/api-keys/{{ key.id }}/edit_description"
+				class="flex flex-wrap items-center gap-2"
+			>
+				<input type="hidden" name="_csrf" value="{{ csrf_token }}" />
+				<input
+					type="text"
+					name="description"
+					maxlength="200"
+					value="{{ key.description_text }}"
+					class="input input-bordered input-sm flex-1 min-w-48"
+					x-init="$nextTick(() => editingDescription && $el.focus())"
+				/>
+				<button type="submit" class="btn btn-primary btn-outline btn-sm font-normal">
+					Save
+				</button>
+				<button
+					type="button"
+					class="btn btn-ghost btn-sm font-normal"
+					@click="editingDescription = false"
+				>
+					Cancel
+				</button>
+			</form>
+
+			<div
+				class="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs opacity-70"
+			>
+				<span class="inline-flex items-center gap-1">
+					<span class="uppercase tracking-wider">Expires</span>
+					<span
+						x-show="!editingExpiry"
+						class="{% if key.is_expired %}text-error{% endif %}"
+						>{{ key.expires_at_display }}{% if key.is_expired %} (expired){% endif %}</span
+					>
+					<button
+						type="button"
+						class="btn btn-ghost btn-xs px-1 font-normal"
+						@click="editingExpiry = true"
+						x-show="!editingExpiry"
+						aria-label="Edit expiry"
+					>
+						Edit
+					</button>
+				</span>
+				<span class="inline-flex items-center gap-1">
+					<span class="uppercase tracking-wider">Last used</span>
+					<span>{{ key.last_used_at_display }}</span>
+				</span>
+			</div>
+
+			<form
+				x-show="editingExpiry"
+				x-cloak
+				method="post"
+				action="/api-keys/{{ key.id }}/edit_expiry"
+				class="flex flex-wrap items-center gap-2"
+			>
+				<input type="hidden" name="_csrf" value="{{ csrf_token }}" />
+				<select name="expiry" class="select select-bordered select-sm">
+					{% for option in expiry_options %}
+					<option
+						value="{{ option.value }}"
+						{% if option.value == key.current_expiry_value %}selected{% endif %}
+					>
+						{{ option.label }}
+					</option>
+					{% endfor %}
+				</select>
+				<button type="submit" class="btn btn-primary btn-outline btn-sm font-normal">
+					Save
+				</button>
+				<button
+					type="button"
+					class="btn btn-ghost btn-sm font-normal"
+					@click="editingExpiry = false"
+				>
+					Cancel
+				</button>
+			</form>
+		</li>
+		{% endfor %}
+	</ul>
+	{% endif %}
+</section>
+{% endblock %}
