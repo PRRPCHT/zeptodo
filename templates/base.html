@@ -27,8 +27,13 @@
 		x-data
 		class="min-h-screen flex flex-col bg-base-100 text-base-content"
 	>
-		<main class="container mx-auto flex-1 px-2 md:px-4 pt-4 pb-8 w-full">
-			<header class="max-w-2xl mx-auto flex items-end justify-between gap-4 mb-6">
+		<main class="container mx-auto flex-1 px-2 md:px-4 pt-2 md:pt-4 pb-8 w-full">
+			<header
+				x-data="{ menuOpen: false }"
+				@keydown.escape.window="menuOpen = false"
+				@click.outside="menuOpen = false"
+				class="max-w-2xl mx-auto flex items-end justify-between gap-4 mb-6 relative"
+			>
 				<div>
 					<p class="text-sm uppercase tracking-[0.2em] opacity-50">Zeptodo</p>
 					{% block heading %}
@@ -37,31 +42,47 @@
 				</div>
 				<div class="flex items-center gap-1">
 					{% match layout.username %} {% when Some with (_name) %}
-					<a
-						href="/api-keys"
-						class="btn btn-ghost btn-sm font-normal uppercase tracking-wider opacity-60 hover:opacity-100"
-						>API keys</a
+					<button
+						type="button"
+						class="btn btn-ghost btn-sm btn-circle opacity-60 hover:opacity-100"
+						aria-label="Open menu"
+						:aria-expanded="menuOpen"
+						aria-controls="primary-nav"
+						@click="menuOpen = !menuOpen"
 					>
-					<a
-						href="/"
-						class="btn btn-ghost btn-sm font-normal uppercase tracking-wider opacity-60 hover:opacity-100"
-						>Tasks</a
-					>
-					<form
-						method="post"
-						action="/logout"
-						hx-post="/logout"
-						hx-swap="none"
-						class="contents"
-					>
-						<input type="hidden" name="_csrf" value="{{ layout.csrf_token }}" />
-						<button
-							type="submit"
-							class="btn btn-ghost btn-sm font-normal uppercase tracking-wider opacity-60 hover:opacity-100"
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							class="size-5"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.75"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+							x-show="!menuOpen"
 						>
-							Logout
-						</button>
-					</form>
+							<line x1="4" y1="7" x2="20" y2="7" />
+							<line x1="4" y1="12" x2="20" y2="12" />
+							<line x1="4" y1="17" x2="20" y2="17" />
+						</svg>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							class="size-5"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.75"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+							x-show="menuOpen"
+							x-cloak
+						>
+							<line x1="6" y1="6" x2="18" y2="18" />
+							<line x1="18" y1="6" x2="6" y2="18" />
+						</svg>
+					</button>
 					{% when None %} {% endmatch %}
 					<form
 						method="post"
@@ -112,6 +133,121 @@
 						</button>
 					</form>
 				</div>
+
+				{% match layout.username %} {% when Some with (_name) %}
+				<nav
+					id="primary-nav"
+					x-show="menuOpen"
+					x-cloak
+					x-transition:enter="transition ease-out duration-150"
+					x-transition:enter-start="opacity-0 -translate-y-2 scale-[0.98]"
+					x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+					x-transition:leave="transition ease-in duration-100"
+					x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+					x-transition:leave-end="opacity-0 -translate-y-2 scale-[0.98]"
+					class="absolute right-0 top-full mt-2 w-56 origin-top-right z-30 rounded border border-base-300 bg-base-200 shadow-lg p-2"
+				>
+					<ul class="flex flex-col">
+						<li>
+							<a
+								href="/"
+								@click="menuOpen = false"
+								class="flex items-center gap-3 px-3 py-3 rounded uppercase tracking-wider text-sm opacity-70 hover:opacity-100 hover:bg-base-300/60 transition"
+							>
+								<span
+									class="inline-flex w-4 justify-center opacity-60"
+									aria-hidden="true"
+								>
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										class="size-4"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.75"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									>
+										<polyline points="9 11 12 14 22 4" />
+										<path
+											d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"
+										/>
+									</svg>
+								</span>
+								<span>Tasks</span>
+							</a>
+						</li>
+						<li>
+							<a
+								href="/api-keys"
+								@click="menuOpen = false"
+								class="flex items-center gap-3 px-3 py-3 rounded uppercase tracking-wider text-sm opacity-70 hover:opacity-100 hover:bg-base-300/60 transition"
+							>
+								<span
+									class="inline-flex w-4 justify-center opacity-60"
+									aria-hidden="true"
+								>
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										class="size-4"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.75"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									>
+										<circle cx="8" cy="14" r="4" />
+										<path d="M10.85 11.15 21 1l-2 2 2 2-3 3-2-2-2 2" />
+									</svg>
+								</span>
+								<span>API keys</span>
+							</a>
+						</li>
+						<li class="border-t border-base-300/60 mt-1 pt-1">
+							<form
+								method="post"
+								action="/logout"
+								hx-post="/logout"
+								hx-swap="none"
+								class="contents"
+								@submit="menuOpen = false"
+							>
+								<input
+									type="hidden"
+									name="_csrf"
+									value="{{ layout.csrf_token }}"
+								/>
+								<button
+									type="submit"
+									class="w-full flex items-center gap-3 px-3 py-3 rounded uppercase tracking-wider text-sm opacity-70 hover:opacity-100 hover:bg-base-300/60 transition text-left"
+								>
+									<span
+										class="inline-flex w-4 justify-center opacity-60"
+										aria-hidden="true"
+									>
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											class="size-4"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.75"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										>
+											<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+											<polyline points="16 17 21 12 16 7" />
+											<line x1="21" y1="12" x2="9" y2="12" />
+										</svg>
+									</span>
+									<span>Logout</span>
+								</button>
+							</form>
+						</li>
+					</ul>
+				</nav>
+				{% when None %} {% endmatch %}
 			</header>
 			{% block content %}{% endblock %}
 		</main>
