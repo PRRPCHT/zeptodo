@@ -13,6 +13,19 @@ pub enum Status {
     Cancelled,
 }
 
+impl serde::Serialize for Status {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Status {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = <&str>::deserialize(deserializer)?;
+        Status::parse(raw).map_err(serde::de::Error::custom)
+    }
+}
+
 impl Status {
     /// Return the snake_case identifier used in SQL `CHECK` constraints.
     ///
@@ -47,7 +60,7 @@ impl Status {
 }
 
 /// A persisted task row.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 #[allow(dead_code)]
 pub struct Task {
     pub id: i64,
