@@ -6,6 +6,7 @@ use rand::RngCore;
 use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
+use subtle::ConstantTimeEq;
 
 /// Number of random bytes used to mint a new API key.
 const KEY_BYTES: usize = 32;
@@ -261,6 +262,69 @@ pub async fn update_description(
     get(pool, id).await
 }
 
+/// Outcome of [`verify`]: the id of the matched key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VerifiedKey {
+    pub id: i64,
+}
+
+/// Resolve a bearer token against the stored keys.
+///
+/// ### Arguments
+/// - `pool`: SQLite pool with migrations applied.
+/// - `plaintext`: Bearer token as supplied by the client.
+///
+/// ### Returns
+/// - `Ok(Some(VerifiedKey))`: The token matched a non-expired row.
+/// - `Ok(None)`: No match, mismatch, or the key has expired.
+/// - `Err`: SQLite query failed.
+pub async fn verify(pool: &SqlitePool, plaintext: &str) -> Result<Option<VerifiedKey>> {
+    let computed = hash(plaintext);
+    let row: Option<(i64, String, Option<DateTime<Utc>>)> =
+        sqlx::query_as("SELECT id, key_hash, expires_at FROM api_keys WHERE key_hash = ?")
+            .bind(&computed)
+            .fetch_optional(pool)
+            .await
+            .context("looking up api key")?;
+    let Some((id, stored_hash, expires_at)) = row else {
+        return Ok(None);
+    };
+    if !bool::from(stored_hash.as_bytes().ct_eq(computed.as_bytes())) {
+        return Ok(None);
+    }
+    if expires_at.is_some_and(|when| when <= Utc::now()) {
+        return Ok(None);
+    }
+    Ok(Some(VerifiedKey { id }))
+}
+
+/// Stamp `last_used_at` for an API key and report whether this was its first use.
+///
+/// ### Arguments
+/// - `pool`: SQLite pool with migrations applied.
+/// - `id`: Primary key of the row to stamp.
+///
+/// ### Returns
+/// - `Ok(true)`: The row existed and `last_used_at` was previously `NULL`.
+/// - `Ok(false)`: The row did not exist, or `last_used_at` was already set.
+/// - `Err`: SQLite query failed.
+pub async fn mark_used(pool: &SqlitePool, id: i64) -> Result<bool> {
+    let now = Utc::now();
+    let prev: Option<Option<DateTime<Utc>>> =
+        sqlx::query_scalar("SELECT last_used_at FROM api_keys WHERE id = ?")
+            .bind(id)
+            .fetch_optional(pool)
+            .await
+            .context("reading last_used_at")?;
+    sqlx::query("UPDATE api_keys SET last_used_at = ? WHERE id = ?")
+        .bind(now)
+        .bind(id)
+        .execute(pool)
+        .await
+        .context("updating last_used_at")?;
+    Ok(matches!(prev, Some(None)))
+}
+
 /// Delete an API key by id.
 ///
 /// ### Arguments
@@ -389,6 +453,54 @@ mod tests {
         let rows = list(&pool).await.unwrap();
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].id, b.record.id);
+    }
+
+    #[tokio::test]
+    async fn verify_accepts_matching_unexpired_token() {
+        let pool = pool().await;
+        let created = create(&pool, None, ExpiryChoice::Year1).await.unwrap();
+        let result = verify(&pool, &created.plaintext).await.unwrap();
+        assert_eq!(
+            result,
+            Some(VerifiedKey {
+                id: created.record.id
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_rejects_unknown_token() {
+        let pool = pool().await;
+        let _ = create(&pool, None, ExpiryChoice::Year1).await.unwrap();
+        let result = verify(&pool, "definitely-not-a-real-token").await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn verify_rejects_expired_token() {
+        let pool = pool().await;
+        let created = create(&pool, None, ExpiryChoice::Year1).await.unwrap();
+        let past = Utc::now() - Duration::days(1);
+        sqlx::query("UPDATE api_keys SET expires_at = ? WHERE id = ?")
+            .bind(past)
+            .bind(created.record.id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let result = verify(&pool, &created.plaintext).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn mark_used_reports_first_use_then_false() {
+        let pool = pool().await;
+        let created = create(&pool, None, ExpiryChoice::Never).await.unwrap();
+        let first = mark_used(&pool, created.record.id).await.unwrap();
+        assert!(first);
+        let second = mark_used(&pool, created.record.id).await.unwrap();
+        assert!(!second);
+        let reloaded = get(&pool, created.record.id).await.unwrap().unwrap();
+        assert!(reloaded.last_used_at.is_some());
     }
 
     #[test]

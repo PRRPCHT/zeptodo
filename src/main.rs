@@ -8,6 +8,7 @@ use tower_http::trace::TraceLayer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
+mod api;
 mod auth;
 mod config;
 mod db;
@@ -37,6 +38,21 @@ async fn main() -> Result<()> {
         pool,
         config: Arc::new(cfg.clone()),
     };
+
+    let api_v1 = Router::new()
+        .route("/tasks", get(api::tasks::list).post(api::tasks::create))
+        .route(
+            "/tasks/{id}",
+            get(api::tasks::get)
+                .put(api::tasks::update)
+                .delete(api::tasks::delete),
+        )
+        .route("/tasks/{id}/status", post(api::tasks::set_status))
+        .route("/tasks/reorder", post(api::tasks::reorder))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            api::auth::require_api_key,
+        ));
 
     let app = Router::new()
         .route("/", get(web::tasks::dashboard))
@@ -69,6 +85,7 @@ async fn main() -> Result<()> {
         )
         .route("/api-keys/{id}/delete", post(web::api_keys::delete))
         .route("/theme/toggle", post(web::theme::toggle))
+        .nest("/api/v1", api_v1)
         .nest_service("/static", ServeDir::new("static"))
         .layer(TraceLayer::new_for_http())
         .layer(session_layer)
