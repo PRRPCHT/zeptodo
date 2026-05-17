@@ -2,13 +2,14 @@
 name = "zeptodo"
 version = "0.1.0"
 edition = "2024"
+license = "Apache-2.0"
 
 [dependencies]
 axum = "0.8"
 axum-extra = { version = "0.12.6", features = ["cookie"] }
 tokio = { version = "1", features = ["full"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["fs", "trace"] }
+tower-http = { version = "0.6", features = ["fs", "trace", "set-header"] }
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio-rustls", "macros", "migrate", "chrono"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
@@ -30,6 +31,8 @@ tower-sessions-sqlx-store = { version = "0.15", features = ["sqlite"] }
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 ammonia = "4"
 sha2 = "0.10"
+tower_governor = "0.8.0"
+governor = "0.10.4"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

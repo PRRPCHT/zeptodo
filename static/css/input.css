@@ -12,6 +12,13 @@ html {
 	font-size: 1.1em;
 }
 
+html[data-theme='dark'] .theme-icon-moon {
+	display: none;
+}
+html[data-theme='light'] .theme-icon-sun {
+	display: none;
+}
+
 .task-description h1,
 .task-description h2,
 .task-description h3,

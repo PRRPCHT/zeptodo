@@ -2,7 +2,9 @@ use anyhow::Result;
 use axum::Router;
 use axum::routing::{get, post};
 use sqlx::SqlitePool;
+use std::net::SocketAddr;
 use std::sync::Arc;
+use tower_governor::GovernorLayer;
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::layer::SubscriberExt;
@@ -39,6 +41,10 @@ async fn main() -> Result<()> {
         config: Arc::new(cfg.clone()),
     };
 
+    let api_rate_limit_config = web::rate_limit::api_config();
+    let api_rate_limit_layer: GovernorLayer<_, _, axum::body::Body> =
+        GovernorLayer::new(api_rate_limit_config).error_handler(web::rate_limit::api_error);
+
     let api_v1 = Router::new()
         .route("/tasks", get(api::tasks::list).post(api::tasks::create))
         .route(
@@ -52,15 +58,26 @@ async fn main() -> Result<()> {
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             api::auth::require_api_key,
-        ));
+        ))
+        .layer(api_rate_limit_layer);
 
-    let app = Router::new()
-        .route("/", get(web::tasks::dashboard))
-        .route("/healthz", get(web::routes::healthz))
+    let login_rate_limit_config = web::rate_limit::login_config();
+    let login_rate_limit_layer: GovernorLayer<_, _, axum::body::Body> =
+        GovernorLayer::new(login_rate_limit_config).error_handler(web::rate_limit::html_error);
+
+    let cookies_secure = cfg.cookies_secure();
+
+    let login_routes = Router::new()
         .route(
             "/login",
             get(web::login::get_login).post(web::login::post_login),
         )
+        .layer(login_rate_limit_layer);
+
+    let app = Router::new()
+        .route("/", get(web::tasks::dashboard))
+        .route("/healthz", get(web::routes::healthz))
+        .merge(login_routes)
         .route("/logout", post(web::login::post_logout))
         .route("/tasks", post(web::tasks::create_task))
         .route("/tasks/{id}", post(web::tasks::update_task))
@@ -89,12 +106,30 @@ async fn main() -> Result<()> {
         .nest_service("/static", ServeDir::new("static"))
         .layer(TraceLayer::new_for_http())
         .layer(session_layer)
+        .layer({
+            let cfg = web::rate_limit::global_config();
+            let layer: GovernorLayer<_, _, axum::body::Body> =
+                GovernorLayer::new(cfg).error_handler(web::rate_limit::html_error);
+            layer
+        })
+        .layer(web::security::csp_layer())
+        .layer(web::security::nosniff_layer())
+        .layer(web::security::frame_options_layer())
+        .layer(web::security::referrer_policy_layer())
+        .layer(web::security::permissions_policy_layer())
+        .layer(tower::util::option_layer(web::security::hsts_layer(
+            cookies_secure,
+        )))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(&cfg.bind_addr).await?;
     let addr = listener.local_addr()?;
     tracing::info!(%addr, "listening");
-    axum::serve(listener, app).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }
 

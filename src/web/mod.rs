@@ -2,6 +2,8 @@ pub mod api_keys;
 pub mod layout;
 pub mod login;
 pub mod markdown;
+pub mod rate_limit;
 pub mod routes;
+pub mod security;
 pub mod tasks;
 pub mod theme;

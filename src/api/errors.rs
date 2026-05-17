@@ -70,6 +70,36 @@ impl ApiError {
         }
     }
 
+    /// Build a 429 `rate_limited` error.
+    ///
+    /// ### Arguments
+    /// - `message`: Human-readable explanation included in the JSON body.
+    ///
+    /// ### Returns
+    /// - `ApiError`: Ready to be returned from a layer or handler.
+    pub fn too_many_requests(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            code: "rate_limited",
+            message: message.into(),
+        }
+    }
+
+    /// Build a 500 `internal_error` without an underlying cause.
+    ///
+    /// ### Arguments
+    /// - `message`: Human-readable explanation included in the JSON body.
+    ///
+    /// ### Returns
+    /// - `ApiError`: A generic 500 response.
+    pub fn internal_message(message: &str) -> Self {
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            code: "internal_error",
+            message: message.to_owned(),
+        }
+    }
+
     /// Build a 500 `internal_error` and log the underlying cause.
     ///
     /// ### Arguments
