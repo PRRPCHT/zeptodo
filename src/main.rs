@@ -36,6 +36,7 @@ async fn main() -> Result<()> {
 
     let session_layer = auth::session::build_layer(pool.clone(), &cfg).await?;
 
+    let shutdown_pool = pool.clone();
     let state = AppState {
         pool,
         config: Arc::new(cfg.clone()),
@@ -129,8 +130,54 @@ async fn main() -> Result<()> {
         listener,
         app.into_make_service_with_connect_info::<SocketAddr>(),
     )
+    .with_graceful_shutdown(shutdown_signal())
     .await?;
+    tracing::info!("server stopped");
+    checkpoint_wal(&shutdown_pool).await;
     Ok(())
+}
+
+/// Truncate the SQLite WAL into the main database file before exit.
+///
+/// ### Arguments
+/// - `pool`: SQLite pool kept alive past the router's drop for shutdown work.
+async fn checkpoint_wal(pool: &SqlitePool) {
+    match sqlx::query("PRAGMA wal_checkpoint(TRUNCATE);")
+        .execute(pool)
+        .await
+    {
+        Ok(_) => tracing::info!("WAL checkpoint complete"),
+        Err(error) => tracing::warn!(?error, "WAL checkpoint failed"),
+    }
+}
+
+/// Wait for a shutdown signal (Ctrl+C on all platforms, SIGTERM on Unix).
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        () = ctrl_c => {
+            tracing::info!("received Ctrl+C, starting graceful shutdown");
+        }
+        () = terminate => {
+            tracing::info!("received SIGTERM, starting graceful shutdown");
+        }
+    }
 }
 
 /// Install a JSON `tracing` subscriber to stdout, optionally tee'd to a daily log file.
