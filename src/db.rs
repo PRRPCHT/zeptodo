@@ -16,6 +16,7 @@ pub async fn init(database_url: &str) -> Result<SqlitePool> {
         .with_context(|| format!("invalid DATABASE_URL: {database_url}"))?
         .create_if_missing(true)
         .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+        .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
         .busy_timeout(std::time::Duration::from_secs(30))
         .foreign_keys(true)
         .log_statements(tracing::log::LevelFilter::Debug);
