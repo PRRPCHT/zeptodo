@@ -1,0 +1,8 @@
+# Askama templates: prettier does not understand `{% ... %}` and `{{ ... }}`
+# expressions and will mangle them. Notably it treats `==` inside `{% if %}`
+# as an HTML attribute separator and produces invalid Askama.
+templates/
+
+# Build artifacts
+static/app.css
+static/files/
