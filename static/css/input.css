@@ -12,6 +12,10 @@ html {
 	font-size: 1.1em;
 }
 
+[x-cloak] {
+	display: none !important;
+}
+
 html[data-theme='dark'] .theme-icon-moon {
 	display: none;
 }
