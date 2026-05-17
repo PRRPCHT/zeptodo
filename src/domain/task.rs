@@ -205,17 +205,14 @@ pub async fn create(pool: &SqlitePool, dto: NewTask) -> Result<Task> {
 /// - `Ok(None)`: No task with this id; nothing was changed.
 /// - `Err`: SQLite query failed.
 pub async fn update(pool: &SqlitePool, id: i64, dto: UpdateTask) -> Result<Option<Task>> {
-    let now = Utc::now();
-    let rows =
-        sqlx::query("UPDATE tasks SET title = ?, description = ?, updated_at = ? WHERE id = ?")
-            .bind(&dto.title)
-            .bind(&dto.description)
-            .bind(now)
-            .bind(id)
-            .execute(pool)
-            .await
-            .context("updating task")?
-            .rows_affected();
+    let rows = sqlx::query("UPDATE tasks SET title = ?, description = ? WHERE id = ?")
+        .bind(&dto.title)
+        .bind(&dto.description)
+        .bind(id)
+        .execute(pool)
+        .await
+        .context("updating task")?
+        .rows_affected();
     if rows == 0 {
         return Ok(None);
     }
@@ -234,10 +231,8 @@ pub async fn update(pool: &SqlitePool, id: i64, dto: UpdateTask) -> Result<Optio
 /// - `Ok(None)`: No task with this id.
 /// - `Err`: SQLite query failed.
 pub async fn set_status(pool: &SqlitePool, id: i64, status: Status) -> Result<Option<Task>> {
-    let now = Utc::now();
-    let rows = sqlx::query("UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?")
+    let rows = sqlx::query("UPDATE tasks SET status = ? WHERE id = ?")
         .bind(status.as_str())
-        .bind(now)
         .bind(id)
         .execute(pool)
         .await
@@ -497,6 +492,49 @@ mod tests {
         assert_eq!(a_after.position, a.position);
         assert_eq!(b_after.position, b.position);
         assert_eq!(c_after.position, c.position);
+    }
+
+    #[tokio::test]
+    async fn updated_at_tracks_edits_but_not_reorders() {
+        let pool = pool().await;
+        let a = create(&pool, new("a")).await.unwrap();
+        let b = create(&pool, new("b")).await.unwrap();
+        let initial = a.updated_at;
+
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        let edited = update(
+            &pool,
+            a.id,
+            UpdateTask {
+                title: "renamed".into(),
+                description: None,
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(
+            edited.updated_at > initial,
+            "title edit should bump updated_at"
+        );
+
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        let restatuses = set_status(&pool, a.id, Status::InProgress)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            restatuses.updated_at > edited.updated_at,
+            "status change should bump updated_at"
+        );
+
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        reorder(&pool, &[b.id, a.id]).await.unwrap();
+        let a_after_reorder = get(&pool, a.id).await.unwrap().unwrap();
+        assert_eq!(
+            a_after_reorder.updated_at, restatuses.updated_at,
+            "reorder must not bump updated_at"
+        );
     }
 
     #[tokio::test]
