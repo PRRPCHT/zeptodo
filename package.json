@@ -4,13 +4,16 @@
 	"private": true,
 	"scripts": {
 		"copy:fonts": "mkdir -p static/files && cp node_modules/@fontsource/barlow-condensed/files/barlow-condensed-latin-400-normal.woff2 node_modules/@fontsource/barlow-condensed/files/barlow-condensed-latin-400-normal.woff static/files/",
-		"build:css": "npm run copy:fonts && tailwindcss -i ./static/css/input.css -o ./static/app.css --minify",
-		"watch:css": "npm run copy:fonts && tailwindcss -i ./static/css/input.css -o ./static/app.css --watch"
+		"copy:alpine": "cp node_modules/@alpinejs/csp/dist/cdn.min.js static/vendor/alpine.min.js",
+		"copy:vendor": "npm run copy:fonts && npm run copy:alpine",
+		"build:css": "npm run copy:vendor && tailwindcss -i ./static/css/input.css -o ./static/app.css --minify",
+		"watch:css": "npm run copy:vendor && tailwindcss -i ./static/css/input.css -o ./static/app.css --watch"
 	},
 	"devDependencies": {
+		"@alpinejs/csp": "^3.15.12",
+		"@fontsource/barlow-condensed": "5.2.8",
 		"@tailwindcss/cli": "4.3.0",
-		"tailwindcss": "4.3.0",
 		"daisyui": "5.5.19",
-		"@fontsource/barlow-condensed": "5.2.8"
+		"tailwindcss": "4.3.0"
 	}
 }
