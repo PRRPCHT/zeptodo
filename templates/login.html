@@ -5,14 +5,14 @@
 {% block content %}
 <section class="max-w-sm mx-auto">
 	{% match error %} {% when Some with (msg) %}
-	<div role="alert" class="alert alert-error mb-4">
+	<div id="login-error" role="alert" class="alert alert-error mb-4">
 		<span>{{ msg }}</span>
 	</div>
 	{% when None %} {% endmatch %}
-	<form method="post" action="/login" class="space-y-4">
+	<form method="post" action="/login" class="space-y-4" novalidate>
 		<input type="hidden" name="_csrf" value="{{ layout.csrf_token }}" />
 		<label class="form-control w-full">
-			<span class="label-text">Username</span>
+			<span class="label-text" id="username-label">Username</span>
 			<input
 				type="text"
 				name="username"
@@ -20,16 +20,20 @@
 				autocomplete="username"
 				maxlength="64"
 				value="{{ username }}"
+				aria-labelledby="username-label"
+				{% match error %}{% when Some with (_) %}aria-invalid="true" aria-describedby="login-error"{% when None %}{% endmatch %}
 				class="input input-bordered w-full"
 			/>
 		</label>
 		<label class="form-control w-full">
-			<span class="label-text">Password</span>
+			<span class="label-text" id="password-label">Password</span>
 			<input
 				type="password"
 				name="password"
 				required
 				autocomplete="current-password"
+				aria-labelledby="password-label"
+				{% match error %}{% when Some with (_) %}aria-invalid="true" aria-describedby="login-error"{% when None %}{% endmatch %}
 				class="input input-bordered w-full"
 			/>
 		</label>

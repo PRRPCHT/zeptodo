@@ -1,18 +1,24 @@
 <div
 	id="task-list"
+	role="list"
+	aria-label="Tasks"
 	class="divide-y divide-base-200 flex flex-col gap-2"
 	data-csrf="{{ csrf_token }}"
-	x-data="taskList()"
-	x-init="init($el)"
+	x-data="taskList"
 >
 	{% if tasks.is_empty() %}
 	<div class="py-12 text-center text-sm opacity-50">No tasks. Add one above.</div>
 	{% else %} {% for task in tasks %}
 	<div
 		id="task-{{ task.id }}"
+		role="listitem"
 		data-task-id="{{ task.id }}"
-		x-data="{ editing: false, showDesc: false }"
-		class="group py-1{% if task.is_done || task.is_cancelled %} task-row-terminal{% endif %} border border-base-200 rounded bg-base-200"
+		tabindex="0"
+		aria-label="Task: {{ task.title }}. Status: {{ task.status_label }}. {% if task.is_done || task.is_cancelled %}Reordering disabled.{% else %}Alt plus arrow up or down to reorder.{% endif %}"
+		x-data="taskRow"
+		@keydown.alt.up.prevent="moveUp()"
+		@keydown.alt.down.prevent="moveDown()"
+		class="group py-1{% if task.is_done || task.is_cancelled %} task-row-terminal{% endif %} border border-base-200 rounded bg-base-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
 	>
 		<div x-show="!editing" class="space-y-1">
 			<div class="flex flex-wrap items-center gap-2 sm:gap-x-3 gap-y-1">
@@ -22,7 +28,7 @@
 			<span
 				class="drag-handle shrink-0 inline-flex items-center justify-center w-6 h-6 cursor-grab opacity-40 hover:opacity-80 touch-none"
 				aria-hidden="true"
-				title="Drag to reorder"
+				title="Drag to reorder, Alt+Up/Down to move up/down"
 			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
@@ -40,13 +46,16 @@
 				</svg>
 			</span>
 			{% endif %}
-			<span class="flex-1 min-w-0 text-base wrap-break-word {% if task.is_done %}line-through opacity-50{% endif %}{% if task.is_cancelled %}line-through opacity-40{% endif %}">
+			<span
+				data-task-title
+				class="flex-1 min-w-0 text-base wrap-break-word {% if task.is_done %}line-through opacity-50{% endif %}{% if task.is_cancelled %}line-through opacity-40{% endif %}"
+			>
 				{{ task.title }}
 			</span>
 			{% if task.has_description %}
 			<button
 				type="button"
-				@click="showDesc = !showDesc"
+				@click="toggleDesc()"
 				class="btn btn-ghost btn-xs btn-circle opacity-60 hover:opacity-100 shrink-0"
 				:aria-label="showDesc ? 'Hide description' : 'Show description'"
 				:aria-expanded="showDesc"
@@ -151,7 +160,7 @@
 						<li>
 							<button
 								type="button"
-								@click="editing = true; document.activeElement && document.activeElement.blur()"
+								@click="startEdit()"
 								class="flex items-center gap-2 w-full"
 							>
 								<span class="w-4 inline-flex items-center justify-center">
@@ -234,15 +243,15 @@
 					required
 					maxlength="128"
 					value="{{ task.title }}"
-					class="w-full bg-transparent border-0 border-b-2 border-base-300 rounded-none px-0 py-2 focus:outline-none focus:border-primary transition-colors"
-					x-init="$nextTick(() => editing && $el.focus())"
+					class="w-full bg-transparent border-0 border-b-2 border-base-300 rounded-none p-2 focus:outline-none focus:border-primary focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 transition-colors"
+					x-init="focusTitleIfEditing()"
 				/>
 				<textarea
 					name="description"
 					rows="3"
 					maxlength="16384"
 					placeholder="Description"
-					class="w-full bg-transparent border-0 border-b-2 border-base-300 rounded-none px-0 py-2 focus:outline-none focus:border-primary transition-colors resize-y"
+					class="w-full bg-transparent border-0 border-b-2 border-base-300 rounded-none p-2 focus:outline-none focus:border-primary focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 transition-colors resize-y"
 				>{{ task.description_text }}</textarea>
 				<div class="flex justify-end gap-2">
 					<button type="button" class="btn btn-ghost btn-sm uppercase" @click="editing = false">Cancel</button>

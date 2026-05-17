@@ -13,7 +13,7 @@
 	{% match created_plaintext %} {% when Some with (plaintext) %}
 	<div
 		role="alert"
-		x-data="{ copied: false }"
+		x-data="apiKeyCreated"
 		class="alert alert-success flex-col items-stretch gap-3"
 	>
 		<div class="flex items-start gap-2">
@@ -54,11 +54,7 @@
 			<button
 				type="button"
 				class="btn btn-sm"
-				@click="
-					navigator.clipboard.writeText($refs.plaintext.value);
-					copied = true;
-					setTimeout(() => copied = false, 1500);
-				"
+				@click="copy()"
 			>
 				<span x-show="!copied">Copy</span>
 				<span x-show="copied" x-cloak>Copied</span>
@@ -112,7 +108,7 @@
 		{% for key in keys %}
 		<li
 			class="border border-base-200 bg-base-200 rounded p-3 space-y-3"
-			x-data="{ editingDescription: false, editingExpiry: false }"
+			x-data="apiKeyRow"
 		>
 			<div class="flex flex-wrap items-center gap-3">
 				<code class="font-mono text-sm">{{ key.key_prefix }}&hellip;</code>
@@ -165,7 +161,7 @@
 					maxlength="200"
 					value="{{ key.description_text }}"
 					class="input input-bordered input-sm flex-1 min-w-48"
-					x-init="$nextTick(() => editingDescription && $el.focus())"
+					x-init="focusDescriptionIfEditing()"
 				/>
 				<button type="submit" class="btn btn-primary btn-outline btn-sm font-normal">
 					Save

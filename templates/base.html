@@ -19,9 +19,17 @@
 		x-data
 		class="min-h-screen flex flex-col bg-base-100 text-base-content"
 	>
-		<main class="container mx-auto flex-1 px-2 md:px-4 pt-2 md:pt-4 pb-8 w-full">
+		<a
+			href="#main-content"
+			class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-3 focus:py-2 focus:rounded focus:bg-primary focus:text-primary-content focus:shadow-lg"
+		>Skip to main content</a>
+		<main
+			id="main-content"
+			tabindex="-1"
+			class="container mx-auto flex-1 px-2 md:px-4 pt-2 md:pt-4 pb-8 w-full focus:outline-none"
+		>
 			<header
-				x-data="{ menuOpen: false }"
+				x-data="headerNav"
 				@keydown.escape.window="menuOpen = false"
 				@click.outside="menuOpen = false"
 				class="max-w-2xl mx-auto flex items-end justify-between gap-4 mb-6 relative"
@@ -77,6 +85,7 @@
 					</button>
 					{% when None %} {% endmatch %}
 					<form
+						x-data="themeToggle"
 						method="post"
 						action="/theme/toggle"
 						hx-post="/theme/toggle"
@@ -88,10 +97,7 @@
 							type="submit"
 							class="btn btn-ghost btn-sm btn-circle opacity-60 hover:opacity-100"
 							aria-label="Toggle theme"
-							@click="
-								const html = document.documentElement;
-								html.dataset.theme = html.dataset.theme === 'dark' ? 'light' : 'dark';
-							"
+							@click="flip()"
 						>
 							<svg
 								class="theme-icon-sun size-5"
