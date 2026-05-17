@@ -133,8 +133,20 @@ async fn main() -> Result<()> {
     .with_graceful_shutdown(shutdown_signal())
     .await?;
     tracing::info!("server stopped");
+    optimize_db(&shutdown_pool).await;
     checkpoint_wal(&shutdown_pool).await;
     Ok(())
+}
+
+/// Refresh SQLite query planner statistics before exit.
+///
+/// ### Arguments
+/// - `pool`: SQLite pool kept alive past the router's drop for shutdown work.
+async fn optimize_db(pool: &SqlitePool) {
+    match sqlx::query("PRAGMA optimize;").execute(pool).await {
+        Ok(_) => tracing::info!("query planner statistics refreshed"),
+        Err(error) => tracing::warn!(?error, "PRAGMA optimize failed"),
+    }
 }
 
 /// Truncate the SQLite WAL into the main database file before exit.
