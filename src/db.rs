@@ -5,11 +5,6 @@ use std::str::FromStr;
 
 /// Build a SQLite connection pool and run all pending migrations.
 ///
-/// ### Description
-/// The pool is configured to create the database file if missing and to
-/// enable WAL journaling and foreign keys, both required by the schema
-/// introduced in later sprints.
-///
 /// ### Arguments
 /// - `database_url`: SQLx-compatible SQLite URL (e.g. `sqlite://zeptodo.db`).
 ///
@@ -21,6 +16,8 @@ pub async fn init(database_url: &str) -> Result<SqlitePool> {
         .with_context(|| format!("invalid DATABASE_URL: {database_url}"))?
         .create_if_missing(true)
         .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+        .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
+        .busy_timeout(std::time::Duration::from_secs(30))
         .foreign_keys(true)
         .log_statements(tracing::log::LevelFilter::Debug);
 
