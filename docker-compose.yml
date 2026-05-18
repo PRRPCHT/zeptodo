@@ -1,0 +1,58 @@
+services:
+  zeptodo:
+    image: ghcr.io/prrpcht/zeptodo:latest
+    # To build locally instead of pulling, comment out `image:` above and uncomment:
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    container_name: zeptodo
+    restart: unless-stopped
+
+    ports:
+      - '8080:8080'
+
+    environment:
+      # Network
+      - BIND_ADDR=0.0.0.0:8080
+      - BASE_URL=http://localhost:8080
+
+      # Storage
+      - DATABASE_URL=sqlite:///data/zeptodo.db
+
+      # Session signing key (REQUIRED, 32+ random bytes, generate with: openssl rand -base64 48)
+      - SESSION_SECRET=change_me_use_openssl_rand_base64_48
+
+      # Credentials bootstrap.
+      # On first boot the values below are written to the credentials row.
+      # On subsequent boots they OVERRIDE the stored row if different.
+      # To rotate: set the new value, restart, then unset and restart again so
+      # the plaintext does not linger in the process environment.
+      - USERNAME=admin
+      - PASSWORD=changeme
+      - TIMEZONE=UTC
+
+      # Logging. LOG_DIR is optional; stdout JSON logging is always on.
+      - RUST_LOG=info
+      - LOG_DIR=/data/logs
+
+    volumes:
+      - ./data:/data
+
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:8080/login']
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
+
+    security_opt:
+      - no-new-privileges:true

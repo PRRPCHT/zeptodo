@@ -8,7 +8,7 @@ An ultra-minimalist, self-hostable mono-user to-do web app, REST API-enabled. Ba
 - Askama templates + Tailwind v4 + DaisyUI v5
 - HTMX + Alpine.js
 
-## First boot
+## Local development
 
 ### 1. Install JavaScript build dependencies
 
@@ -53,9 +53,97 @@ Then visit `http://localhost:8080/` and enjoy!
 
 When `LOG_DIR` is set, daily-rotated JSON logs land under that directory with a 7-day retention. Stdout JSON logging is always enabled.
 
+## Docker deployment
+
+A multi-stage `Dockerfile` is provided. The image is published to GHCR for
+`linux/amd64` and is the recommended way to self-host Zeptodo.
+
+### Run with docker-compose (recommended)
+
+```bash
+# 1. Create a host data directory (the SQLite file and logs land here)
+mkdir -p ./data
+
+# 2. Edit docker-compose.yml: set SESSION_SECRET, USERNAME, PASSWORD, BASE_URL, TIMEZONE
+#    Generate a session secret with: openssl rand -base64 48
+
+# 3. Start the service
+docker compose up -d
+
+# 4. Tail logs
+docker compose logs -f
+```
+
+The default compose file pulls `ghcr.io/prrpcht/zeptodo:latest`. To build the
+image locally instead, comment out the `image:` line and uncomment the `build:`
+block in `docker-compose.yml`.
+
+### Run with plain docker
+
+```bash
+docker run -d \
+  --name zeptodo \
+  -p 8080:8080 \
+  -v "$(pwd)/data:/data" \
+  -e SESSION_SECRET="$(openssl rand -base64 48)" \
+  -e USERNAME=admin \
+  -e PASSWORD=changeme \
+  -e BASE_URL=http://localhost:8080 \
+  -e TIMEZONE=UTC \
+  ghcr.io/prrpcht/zeptodo:latest
+```
+
+The container runs as a non-root user (uid/gid 1000). Make sure the host
+`./data` directory is writable by that user, or set the ownership to match:
+
+```bash
+sudo chown -R 1000:1000 ./data
+```
+
+### Environment variables
+
+| Variable | Default in image | Purpose |
+|---|---|---|
+| `BIND_ADDR` | `0.0.0.0:8080` | host:port to bind inside the container |
+| `BASE_URL` | `http://localhost:8080` | Public URL of the instance |
+| `DATABASE_URL` | `sqlite:///data/zeptodo.db` | SQLite file path |
+| `SESSION_SECRET` | (none, required) | 32+ random bytes for session cookie signing. Generate with `openssl rand -base64 48`. |
+| `USERNAME` | (none, required at first boot) | Login username |
+| `PASSWORD` | (none, required at first boot) | Login password (plaintext in env, hashed before storage) |
+| `TIMEZONE` | `UTC` | IANA timezone name (e.g. `Europe/Paris`) |
+| `LOG_DIR` | `/data/logs` | Daily-rotated JSON logs with 7-day retention. Stdout is always on. |
+
+### Credentials rotation
+
+`USERNAME`, `PASSWORD`, and `TIMEZONE` are reconciled against the stored row
+on every startup. Empty or absent values mean "no change". To rotate:
+
+```bash
+# 1. Update the value in docker-compose.yml (or pass via -e)
+# 2. Restart so the new value is written:
+docker compose up -d
+
+# 3. Clear the plaintext from the environment and restart again so it does
+#    not linger in the process environment:
+#    (edit docker-compose.yml, comment out the line or set it to empty)
+docker compose up -d
+```
+
+### Upgrade path
+
+Migrations are embedded in the binary and run automatically on startup. To
+upgrade, pull the new image tag and restart:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+The on-disk database is preserved through the `/data` volume.
+
 ## Quality checks
 
-All three commands must pass before any sprint is considered done:
+All three commands must pass before any task is considered done:
 
 ```bash
 cargo fmt --all -- --check
