@@ -102,3 +102,14 @@ html[data-theme='light'] .theme-icon-sun {
 	border: 1px solid color-mix(in oklab, currentColor 20%, transparent);
 	padding: 0.25rem 0.5rem;
 }
+
+.filter-status:checked {
+	--btn-color: initial;
+	--btn-fg: var(--color-primary);
+}
+.filter-status:checked:not(:hover) {
+	--btn-bg: transparent;
+	--btn-border: transparent;
+	--btn-shadow: "";
+	--btn-noise: none;
+}

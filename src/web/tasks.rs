@@ -15,7 +15,9 @@ use crate::web::layout::{self, LayoutContext};
 use crate::web::markdown;
 use crate::web::theme::Theme;
 
-const SESSION_SHOW_TERMINAL_KEY: &str = "show_terminal";
+const SESSION_FILTER_KEY: &str = "status_filter";
+
+const DEFAULT_FILTER: [Status; 2] = [Status::Todo, Status::InProgress];
 
 const ICON_TODO: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-5"><circle cx="12" cy="12" r="9"/></svg>"##;
 
@@ -121,12 +123,32 @@ fn build_view(task: &Task) -> TaskView {
     }
 }
 
+/// View-model describing the four status checkboxes in the filter UI.
+#[derive(Debug, Clone)]
+pub struct FilterView {
+    pub todo: bool,
+    pub in_progress: bool,
+    pub done: bool,
+    pub cancelled: bool,
+}
+
+impl FilterView {
+    fn from_statuses(statuses: &[Status]) -> Self {
+        FilterView {
+            todo: statuses.contains(&Status::Todo),
+            in_progress: statuses.contains(&Status::InProgress),
+            done: statuses.contains(&Status::Done),
+            cancelled: statuses.contains(&Status::Cancelled),
+        }
+    }
+}
+
 #[derive(Template)]
 #[template(path = "todos.html")]
 struct TodosPage {
     layout: LayoutContext,
     tasks: Vec<TaskView>,
-    show_terminal: bool,
+    filter: FilterView,
     csrf_token: String,
     status_options: Vec<StatusOption>,
 }
@@ -136,7 +158,7 @@ struct TodosPage {
 #[allow(dead_code)]
 struct TaskListFragment {
     tasks: Vec<TaskView>,
-    show_terminal: bool,
+    filter: FilterView,
     csrf_token: String,
     status_options: Vec<StatusOption>,
 }
@@ -158,12 +180,12 @@ pub async fn dashboard(
     user: AuthedUser,
 ) -> Response {
     tracing::debug!(username = %user.0, "rendering dashboard");
-    let show_terminal = read_show_terminal(&session).await;
+    let statuses = read_status_filter(&session).await;
     let layout = match layout::build(theme, &session).await {
         Ok(l) => l,
         Err(err) => return internal_error("layout build failed", err),
     };
-    let tasks = match load_views(&state, show_terminal).await {
+    let tasks = match load_views(&state, &statuses).await {
         Ok(v) => v,
         Err(err) => return internal_error("loading tasks failed", err),
     };
@@ -171,7 +193,7 @@ pub async fn dashboard(
     render(TodosPage {
         layout,
         tasks,
-        show_terminal,
+        filter: FilterView::from_statuses(&statuses),
         csrf_token,
         status_options: status_options(),
     })
@@ -398,59 +420,60 @@ pub async fn reorder_tasks(
     respond_with_list(state, session, headers).await
 }
 
-/// Decoded body of the `POST /tasks/show-terminal` form (CSRF token only).
-#[derive(Debug, Deserialize)]
-pub struct ToggleForm {
-    #[serde(rename = "_csrf")]
-    pub csrf: String,
-}
-
-/// Toggle the session-stored preference that shows `Done` and `Cancelled` tasks.
-///
-/// ### Description
-/// The preference lives in the session, so it survives navigation within the
-/// same browser session but resets on logout or when the session expires.
+/// Update the session-stored status filter.
 ///
 /// ### Arguments
 /// - `state`: Shared application state.
 /// - `session`: tower-sessions session, where the preference is stored.
 /// - `headers`: Request headers, used to detect HTMX callers.
-/// - `form`: Decoded form body (CSRF token only).
+/// - `form`: Decoded form body as raw key/value pairs.
 ///
 /// ### Returns
 /// - `Response`: HTMX fragment with the refreshed list on `HX-Request`,
 ///   otherwise a 302 redirect to `/`. 403 on CSRF mismatch.
-pub async fn toggle_show_terminal(
+pub async fn set_filter(
     State(state): State<AppState>,
     session: Session,
     headers: HeaderMap,
-    Form(form): Form<ToggleForm>,
+    Form(form): Form<Vec<(String, String)>>,
 ) -> Response {
-    if !csrf_ok(&session, &form.csrf).await {
+    let mut csrf_token: Option<&str> = None;
+    let mut selected: Vec<&'static str> = Vec::new();
+    for (key, value) in &form {
+        match key.as_str() {
+            "_csrf" => csrf_token = Some(value.as_str()),
+            "statuses" => {
+                if let Ok(status) = Status::parse(value) {
+                    let canonical = status.as_str();
+                    if !selected.contains(&canonical) {
+                        selected.push(canonical);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    if !csrf_ok(&session, csrf_token.unwrap_or("")).await {
         return forbidden_csrf();
     }
-    let current = read_show_terminal(&session).await;
-    if let Err(err) = session.insert(SESSION_SHOW_TERMINAL_KEY, !current).await {
-        tracing::error!(error = %err, "toggling show_terminal failed");
+    if let Err(err) = session.insert(SESSION_FILTER_KEY, &selected).await {
+        tracing::error!(error = %err, "storing status filter failed");
     }
     respond_with_list(state, session, headers).await
 }
 
-/// Read the show-terminal preference from the session, defaulting to false.
+/// Read the status filter from the session, defaulting to `todo + in_progress`.
 ///
 /// ### Arguments
 /// - `session`: tower-sessions session.
 ///
 /// ### Returns
-/// - `bool`: `true` when `Done` and `Cancelled` rows should be shown, `false`
-///   otherwise (the default when the key is missing or unreadable).
-async fn read_show_terminal(session: &Session) -> bool {
-    session
-        .get::<bool>(SESSION_SHOW_TERMINAL_KEY)
-        .await
-        .ok()
-        .flatten()
-        .unwrap_or(false)
+/// - `Vec<Status>`: The active filter set.
+async fn read_status_filter(session: &Session) -> Vec<Status> {
+    match session.get::<Vec<String>>(SESSION_FILTER_KEY).await {
+        Ok(Some(raw)) => raw.iter().filter_map(|s| Status::parse(s).ok()).collect(),
+        _ => DEFAULT_FILTER.to_vec(),
+    }
 }
 
 /// Verify a submitted CSRF token, returning `false` on any error path.
@@ -470,13 +493,13 @@ async fn csrf_ok(session: &Session, submitted: &str) -> bool {
 ///
 /// ### Arguments
 /// - `state`: Shared application state.
-/// - `show_terminal`: When `true`, `Done` and `Cancelled` rows are included.
+/// - `statuses`: Statuses to include in the result. Empty means no rows.
 ///
 /// ### Returns
 /// - `Ok(Vec<TaskView>)`: Tasks projected for template rendering.
 /// - `Err`: The underlying repo call failed.
-async fn load_views(state: &AppState, show_terminal: bool) -> Result<Vec<TaskView>> {
-    let tasks = task::list(&state.pool, show_terminal).await?;
+async fn load_views(state: &AppState, statuses: &[Status]) -> Result<Vec<TaskView>> {
+    let tasks = task::list(&state.pool, statuses).await?;
     Ok(tasks.iter().map(build_view).collect())
 }
 
@@ -493,18 +516,18 @@ async fn load_views(state: &AppState, show_terminal: bool) -> Result<Vec<TaskVie
 ///   otherwise a 302 redirect to `/`. 500 on backend errors.
 async fn respond_with_list(state: AppState, session: Session, headers: HeaderMap) -> Response {
     if is_htmx(&headers) {
-        let show_terminal = read_show_terminal(&session).await;
+        let statuses = read_status_filter(&session).await;
         let csrf_token = match csrf::token(&session).await {
             Ok(t) => t,
             Err(err) => return internal_error("csrf token failed", err),
         };
-        let tasks = match load_views(&state, show_terminal).await {
+        let tasks = match load_views(&state, &statuses).await {
             Ok(v) => v,
             Err(err) => return internal_error("loading tasks failed", err),
         };
         render(TaskListFragment {
             tasks,
-            show_terminal,
+            filter: FilterView::from_statuses(&statuses),
             csrf_token,
             status_options: status_options(),
         })
@@ -593,4 +616,50 @@ fn not_found() -> Response {
 fn internal_error(context: &'static str, err: anyhow::Error) -> Response {
     tracing::error!(error = %err, "{context}");
     (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filter_view_from_default_marks_only_active_states() {
+        let view = FilterView::from_statuses(&DEFAULT_FILTER);
+        assert!(view.todo);
+        assert!(view.in_progress);
+        assert!(!view.done);
+        assert!(!view.cancelled);
+    }
+
+    #[test]
+    fn filter_view_from_empty_unchecks_everything() {
+        let view = FilterView::from_statuses(&[]);
+        assert!(!view.todo);
+        assert!(!view.in_progress);
+        assert!(!view.done);
+        assert!(!view.cancelled);
+    }
+
+    #[test]
+    fn filter_view_from_all_checks_everything() {
+        let view = FilterView::from_statuses(&[
+            Status::Todo,
+            Status::InProgress,
+            Status::Done,
+            Status::Cancelled,
+        ]);
+        assert!(view.todo);
+        assert!(view.in_progress);
+        assert!(view.done);
+        assert!(view.cancelled);
+    }
+
+    #[test]
+    fn filter_view_from_partial_subset_only_marks_those_states() {
+        let view = FilterView::from_statuses(&[Status::Done, Status::Cancelled]);
+        assert!(!view.todo);
+        assert!(!view.in_progress);
+        assert!(view.done);
+        assert!(view.cancelled);
+    }
 }

@@ -59,7 +59,17 @@ pub async fn list(
     State(state): State<AppState>,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Vec<Task>>, ApiError> {
-    let tasks = task::list(&state.pool, query.include_terminal)
+    let statuses: &[Status] = if query.include_terminal {
+        &[
+            Status::Todo,
+            Status::InProgress,
+            Status::Done,
+            Status::Cancelled,
+        ]
+    } else {
+        &[Status::Todo, Status::InProgress]
+    };
+    let tasks = task::list(&state.pool, statuses)
         .await
         .map_err(|e| ApiError::internal("listing tasks failed", e))?;
     Ok(Json(tasks))
@@ -272,7 +282,7 @@ mod tests {
     use crate::api;
     use crate::config::Config;
     use crate::domain::api_key::{self, ExpiryChoice};
-    use crate::domain::task::{self, NewTask};
+    use crate::domain::task::{self, NewTask, Status};
 
     async fn build_app() -> (Router, SqlitePool) {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
@@ -407,7 +417,9 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::CREATED);
         let body = read_body(resp).await;
         assert!(body.contains("\"hello\""));
-        let rows = task::list(&pool, false).await.unwrap();
+        let rows = task::list(&pool, &[Status::Todo, Status::InProgress])
+            .await
+            .unwrap();
         assert_eq!(rows.len(), 1);
     }
 

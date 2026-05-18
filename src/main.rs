@@ -85,10 +85,7 @@ async fn main() -> Result<()> {
         .route("/tasks/{id}/status", post(web::tasks::set_status))
         .route("/tasks/{id}/delete", post(web::tasks::delete_task))
         .route("/tasks/reorder", post(web::tasks::reorder_tasks))
-        .route(
-            "/tasks/show-terminal",
-            post(web::tasks::toggle_show_terminal),
-        )
+        .route("/tasks/filter", post(web::tasks::set_filter))
         .route(
             "/api-keys",
             get(web::api_keys::index).post(web::api_keys::create),
