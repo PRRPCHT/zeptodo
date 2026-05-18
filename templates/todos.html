@@ -82,20 +82,47 @@
 	<div class="flex justify-end items-center">
 	<form
 		method="post"
-		action="/tasks/show-terminal"
-		hx-post="/tasks/show-terminal"
+		action="/tasks/filter"
+		hx-post="/tasks/filter"
 		hx-target="#task-list"
 		hx-swap="outerHTML"
-		class="contents"
+		hx-trigger="change"
+		class="flex flex-wrap items-center gap-1"
+		aria-label="Filter tasks by status"
 	>
 		<input type="hidden" name="_csrf" value="{{ csrf_token }}" />
-		<button
-			type="submit"
-			aria-pressed="{% if show_terminal %}true{% else %}false{% endif %}"
-			class="btn btn-ghost btn-xs text-xs uppercase tracking-wider opacity-60 hover:opacity-100 font-normal"
-		>
-			{% if show_terminal %}Hide done and cancelled{% else %}Show done and cancelled{% endif %}
-		</button>
+		<input
+			class="filter-status btn btn-xs btn-ghost font-normal"
+			type="checkbox"
+			name="statuses"
+			value="todo"
+			aria-label="To do"
+			{% if filter.todo %}checked{% endif %}
+		/>
+		<input
+			class="filter-status btn btn-xs btn-ghost font-normal"
+			type="checkbox"
+			name="statuses"
+			value="in_progress"
+			aria-label="In progress"
+			{% if filter.in_progress %}checked{% endif %}
+		/>
+		<input
+			class="filter-status btn btn-xs btn-ghost font-normal"
+			type="checkbox"
+			name="statuses"
+			value="done"
+			aria-label="Done"
+			{% if filter.done %}checked{% endif %}
+		/>
+		<input
+			class="filter-status btn btn-xs btn-ghost font-normal"
+			type="checkbox"
+			name="statuses"
+			value="cancelled"
+			aria-label="Cancelled"
+			{% if filter.cancelled %}checked{% endif %}
+		/>
 	</form>
 	</div>
 

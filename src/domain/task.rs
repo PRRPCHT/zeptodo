@@ -109,29 +109,29 @@ pub struct UpdateTask {
 
 const SELECT_COLUMNS: &str = "id, title, description, status, position, created_at, updated_at";
 
-/// List tasks in display order.
+/// List tasks in display order, filtered by status.
 ///
 /// ### Arguments
 /// - `pool`: SQLite pool with migrations applied.
-/// - `include_terminal`: When `true`, `Done` and `Cancelled` rows are
-///   included. When `false`, only `Todo` and `InProgress` rows are returned.
+/// - `statuses`: Statuses to include. An empty slice returns no rows.
 ///
 /// ### Returns
 /// - `Ok(Vec<Task>)`: Tasks ordered by `position ASC`.
 /// - `Err`: SQLite query failed.
-pub async fn list(pool: &SqlitePool, include_terminal: bool) -> Result<Vec<Task>> {
-    let sql = if include_terminal {
-        format!("SELECT {SELECT_COLUMNS} FROM tasks ORDER BY position ASC")
-    } else {
-        format!(
-            "SELECT {SELECT_COLUMNS} FROM tasks \
-             WHERE status IN ('todo', 'in_progress') ORDER BY position ASC"
-        )
-    };
-    sqlx::query_as::<_, Task>(&sql)
-        .fetch_all(pool)
-        .await
-        .context("listing tasks")
+pub async fn list(pool: &SqlitePool, statuses: &[Status]) -> Result<Vec<Task>> {
+    if statuses.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = vec!["?"; statuses.len()].join(", ");
+    let sql = format!(
+        "SELECT {SELECT_COLUMNS} FROM tasks \
+         WHERE status IN ({placeholders}) ORDER BY position ASC"
+    );
+    let mut query = sqlx::query_as::<_, Task>(&sql);
+    for status in statuses {
+        query = query.bind(status.as_str());
+    }
+    query.fetch_all(pool).await.context("listing tasks")
 }
 
 /// Fetch a single task by id.
@@ -367,16 +367,39 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_filters_terminal_by_default() {
+    async fn list_filters_by_status_set() {
         let pool = pool().await;
         let a = create(&pool, new("a")).await.unwrap();
         let _b = create(&pool, new("b")).await.unwrap();
+        let c = create(&pool, new("c")).await.unwrap();
         set_status(&pool, a.id, Status::Done).await.unwrap();
-        let active = list(&pool, false).await.unwrap();
+        set_status(&pool, c.id, Status::Cancelled).await.unwrap();
+
+        let active = list(&pool, &[Status::Todo, Status::InProgress])
+            .await
+            .unwrap();
         assert_eq!(active.len(), 1);
         assert_eq!(active[0].title, "b");
-        let all = list(&pool, true).await.unwrap();
-        assert_eq!(all.len(), 2);
+
+        let all = list(
+            &pool,
+            &[
+                Status::Todo,
+                Status::InProgress,
+                Status::Done,
+                Status::Cancelled,
+            ],
+        )
+        .await
+        .unwrap();
+        assert_eq!(all.len(), 3);
+
+        let only_done = list(&pool, &[Status::Done]).await.unwrap();
+        assert_eq!(only_done.len(), 1);
+        assert_eq!(only_done[0].title, "a");
+
+        let none = list(&pool, &[]).await.unwrap();
+        assert!(none.is_empty());
     }
 
     #[tokio::test]
@@ -437,11 +460,23 @@ mod tests {
         let n = reorder(&pool, &[d.id, a.id, c.id]).await.unwrap();
         assert_eq!(n, 3);
 
-        let visible = list(&pool, false).await.unwrap();
+        let visible = list(&pool, &[Status::Todo, Status::InProgress])
+            .await
+            .unwrap();
         let visible_titles: Vec<_> = visible.iter().map(|t| t.title.as_str()).collect();
         assert_eq!(visible_titles, vec!["d", "a", "c"]);
 
-        let all = list(&pool, true).await.unwrap();
+        let all = list(
+            &pool,
+            &[
+                Status::Todo,
+                Status::InProgress,
+                Status::Done,
+                Status::Cancelled,
+            ],
+        )
+        .await
+        .unwrap();
         let b_after = all.iter().find(|t| t.id == b.id).unwrap();
         assert_eq!(b_after.position, b.position);
     }
@@ -454,7 +489,17 @@ mod tests {
         let c = create(&pool, new("c")).await.unwrap();
 
         reorder(&pool, &[c.id, b.id, a.id]).await.unwrap();
-        let all = list(&pool, true).await.unwrap();
+        let all = list(
+            &pool,
+            &[
+                Status::Todo,
+                Status::InProgress,
+                Status::Done,
+                Status::Cancelled,
+            ],
+        )
+        .await
+        .unwrap();
         let mut positions: Vec<i64> = all.iter().map(|t| t.position).collect();
         positions.sort_unstable();
         positions.dedup();
@@ -468,7 +513,9 @@ mod tests {
         let b = create(&pool, new("b")).await.unwrap();
         let n = reorder(&pool, &[b.id, 9999, a.id]).await.unwrap();
         assert_eq!(n, 2);
-        let visible = list(&pool, false).await.unwrap();
+        let visible = list(&pool, &[Status::Todo, Status::InProgress])
+            .await
+            .unwrap();
         let titles: Vec<_> = visible.iter().map(|t| t.title.as_str()).collect();
         assert_eq!(titles, vec!["b", "a"]);
     }
@@ -485,7 +532,17 @@ mod tests {
         let n = reorder(&pool, &[c.id, b.id, a.id]).await.unwrap();
         assert_eq!(n, 1);
 
-        let all = list(&pool, true).await.unwrap();
+        let all = list(
+            &pool,
+            &[
+                Status::Todo,
+                Status::InProgress,
+                Status::Done,
+                Status::Cancelled,
+            ],
+        )
+        .await
+        .unwrap();
         let a_after = all.iter().find(|t| t.id == a.id).unwrap();
         let b_after = all.iter().find(|t| t.id == b.id).unwrap();
         let c_after = all.iter().find(|t| t.id == c.id).unwrap();
