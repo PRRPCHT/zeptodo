@@ -4,7 +4,7 @@
 	"private": true,
 	"scripts": {
 		"copy:fonts": "mkdir -p static/files && cp node_modules/@fontsource/barlow-condensed/files/barlow-condensed-latin-400-normal.woff2 node_modules/@fontsource/barlow-condensed/files/barlow-condensed-latin-400-normal.woff static/files/",
-		"copy:alpine": "cp node_modules/@alpinejs/csp/dist/cdn.min.js static/vendor/alpine.min.js",
+		"copy:alpine": "mkdir -p static/vendor && cp node_modules/@alpinejs/csp/dist/cdn.min.js static/vendor/alpine.min.js",
 		"copy:vendor": "npm run copy:fonts && npm run copy:alpine",
 		"build:css": "npm run copy:vendor && tailwindcss -i ./static/css/input.css -o ./static/app.css --minify",
 		"watch:css": "npm run copy:vendor && tailwindcss -i ./static/css/input.css -o ./static/app.css --watch"

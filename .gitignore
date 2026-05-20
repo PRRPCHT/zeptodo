@@ -4,4 +4,5 @@
 /static/files/
 /.env
 /data/*
+!/data/.gitkeep
 /logs
