@@ -9,7 +9,7 @@
 		<span>{{ msg }}</span>
 	</div>
 	{% when None %} {% endmatch %}
-	<form method="post" action="/login" class="space-y-4" novalidate>
+	<form method="post" action="/login" class="flex flex-col gap-4" novalidate>
 		<input type="hidden" name="_csrf" value="{{ layout.csrf_token }}" />
 		<label class="form-control w-full">
 			<span class="label-text" id="username-label">Username</span>
@@ -37,7 +37,7 @@
 				class="input input-bordered w-full"
 			/>
 		</label>
-		<button type="submit" class="btn btn-primary w-full">Sign in</button>
+		<button type="submit" class="btn btn-primary w-full font-normal">Sign in</button>
 	</form>
 </section>
 {% endblock %}
