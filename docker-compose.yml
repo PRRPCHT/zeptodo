@@ -1,15 +1,20 @@
 services:
   zeptodo:
     image: ghcr.io/prrpcht/zeptodo:latest
-    # To build locally instead of pulling, comment out `image:` above and uncomment:
-    # build:
-    #   context: .
-    #   dockerfile: Dockerfile
+    # To build locally instead of pulling, comment out `image:` above
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: zeptodo
     restart: unless-stopped
 
+    # Run as the host user that owns ./data. Defaults to 1000:1000 if unset.
+    # Override via .env file or shell, e.g.: PUID=$(id -u) PGID=$(id -g) docker compose up
+    # or change the ownership of the `data` folder with `sudo chown -R 1000:1000 /path/to/data`
+    user: "${PUID:-1000}:${PGID:-1000}"
+
     ports:
-      - '8080:8080'
+      - "8080:8080"
 
     environment:
       # Network
@@ -20,7 +25,7 @@ services:
       - DATABASE_URL=sqlite:///data/zeptodo.db
 
       # Session signing key (REQUIRED, 32+ random bytes, generate with: openssl rand -base64 48)
-      - SESSION_SECRET=change_me_use_openssl_rand_base64_48
+      - SESSION_SECRET=S+v0g/aeUh8evLZtdF44fxc8maKNuUQ0GgmCl40VNf0Bfmews1lz/WhHtzHimIgY
 
       # Credentials bootstrap.
       # On first boot the values below are written to the credentials row.
@@ -28,8 +33,8 @@ services:
       # To rotate: set the new value, restart, then unset and restart again so
       # the plaintext does not linger in the process environment.
       - USERNAME=admin
-      - PASSWORD=changeme
-      - TIMEZONE=UTC
+      - PASSWORD=change:me
+      - TIMEZONE=Europe/Paris
 
       # Logging. LOG_DIR is optional; stdout JSON logging is always on.
       - RUST_LOG=info
@@ -39,7 +44,15 @@ services:
       - ./data:/data
 
     healthcheck:
-      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:8080/login']
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8080/login",
+        ]
       interval: 30s
       timeout: 3s
       start_period: 5s
@@ -48,10 +61,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1.0'
+          cpus: "1.0"
           memory: 256M
         reservations:
-          cpus: '0.25'
+          cpus: "0.25"
           memory: 64M
 
     security_opt:
