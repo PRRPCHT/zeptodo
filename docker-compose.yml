@@ -1,20 +1,20 @@
 services:
   zeptodo:
     image: ghcr.io/prrpcht/zeptodo:latest
-    # To build locally instead of pulling, comment out `image:` above
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # To build locally instead of pulling, uncomment out `build:` below
+    #build:
+    #  context: .
+    #  dockerfile: Dockerfile
     container_name: zeptodo
     restart: unless-stopped
 
     # Run as the host user that owns ./data. Defaults to 1000:1000 if unset.
     # Override via .env file or shell, e.g.: PUID=$(id -u) PGID=$(id -g) docker compose up
     # or change the ownership of the `data` folder with `sudo chown -R 1000:1000 /path/to/data`
-    user: "${PUID:-1000}:${PGID:-1000}"
+    user: '${PUID:-1000}:${PGID:-1000}'
 
     ports:
-      - "8080:8080"
+      - '8080:8080'
 
     environment:
       # Network
@@ -44,15 +44,7 @@ services:
       - ./data:/data
 
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--no-verbose",
-          "--tries=1",
-          "--spider",
-          "http://localhost:8080/login",
-        ]
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:8080/login']
       interval: 30s
       timeout: 3s
       start_period: 5s
@@ -61,10 +53,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1.0"
+          cpus: '1.0'
           memory: 256M
         reservations:
-          cpus: "0.25"
+          cpus: '0.25'
           memory: 64M
 
     security_opt:
