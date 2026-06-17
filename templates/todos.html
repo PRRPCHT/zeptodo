@@ -79,52 +79,7 @@
 			class="w-full mt-2 bg-transparent border-0 border-b-2 border-base-300 rounded-none px-0 py-2 focus:outline-none focus:border-primary focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-2 transition-colors resize-y"
 		></textarea>
 	</form>
-	<div class="flex justify-end items-center">
-	<form
-		method="post"
-		action="/tasks/filter"
-		hx-post="/tasks/filter"
-		hx-target="#task-list"
-		hx-swap="outerHTML"
-		hx-trigger="change"
-		class="flex flex-wrap items-center gap-1"
-		aria-label="Filter tasks by status"
-	>
-		<input type="hidden" name="_csrf" value="{{ csrf_token }}" />
-		<input
-			class="filter-status btn btn-xs btn-ghost font-normal"
-			type="checkbox"
-			name="statuses"
-			value="todo"
-			aria-label="To do"
-			{% if filter.todo %}checked{% endif %}
-		/>
-		<input
-			class="filter-status btn btn-xs btn-ghost font-normal"
-			type="checkbox"
-			name="statuses"
-			value="in_progress"
-			aria-label="In progress"
-			{% if filter.in_progress %}checked{% endif %}
-		/>
-		<input
-			class="filter-status btn btn-xs btn-ghost font-normal"
-			type="checkbox"
-			name="statuses"
-			value="done"
-			aria-label="Done"
-			{% if filter.done %}checked{% endif %}
-		/>
-		<input
-			class="filter-status btn btn-xs btn-ghost font-normal"
-			type="checkbox"
-			name="statuses"
-			value="cancelled"
-			aria-label="Cancelled"
-			{% if filter.cancelled %}checked{% endif %}
-		/>
-	</form>
-	</div>
+	{% include "_task_header.html" %}
 
 	{% include "_task_list.html" %}
 
