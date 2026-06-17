@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use rand::RngCore;
+use rand::Rng;
 use subtle::ConstantTimeEq;
 use tower_sessions::Session;
 
@@ -25,7 +25,7 @@ pub async fn token(session: &Session) -> Result<String> {
         return Ok(existing);
     }
     let mut bytes = [0u8; TOKEN_BYTES];
-    rand::thread_rng().fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     let token = URL_SAFE_NO_PAD.encode(bytes);
     session
         .insert(SESSION_KEY, &token)

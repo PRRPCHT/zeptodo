@@ -2,8 +2,7 @@ use anyhow::{Context, Result, anyhow};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{DateTime, Duration, Utc};
-use rand::RngCore;
-use rand::rngs::OsRng;
+use rand::Rng;
 use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
 use subtle::ConstantTimeEq;
@@ -104,7 +103,7 @@ pub struct CreatedKey {
 /// - `String`: A 43-character URL-safe token suitable for `Authorization: Bearer`.
 fn mint_plaintext() -> String {
     let mut bytes = [0u8; KEY_BYTES];
-    OsRng.fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
