@@ -17,20 +17,20 @@ tracing-appender = "0.2"
 serde = { version = "1", features = ["derive"] }
 askama = "0.16.0"
 dotenvy = "0.15"
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { version = "0.4.45", features = ["serde"] }
 chrono-tz = "0.10"
 anyhow = "1"
 thiserror = "2"
-time = "0.3"
+time = "0.3.49"
 argon2 = "0.5"
-rand = "0.8"
+rand = "0.10.1"
 base64 = "0.22"
 subtle = "2.6"
 tower-sessions = "0.14"
 tower-sessions-sqlx-store = { version = "0.15", features = ["sqlite"] }
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 ammonia = "4"
-sha2 = "0.10"
+sha2 = "0.11.0"
 tower_governor = "0.8.0"
 governor = "0.10.4"
 
