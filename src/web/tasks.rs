@@ -214,6 +214,7 @@ pub struct CreateForm {
 /// - `state`: Shared application state.
 /// - `session`: tower-sessions session, used to validate the CSRF token.
 /// - `headers`: Request headers, used to detect HTMX callers.
+/// - `user`: Authenticated user supplied by the [`AuthedUser`] extractor.
 /// - `form`: Decoded form body.
 ///
 /// ### Returns
@@ -223,6 +224,7 @@ pub async fn create_task(
     State(state): State<AppState>,
     session: Session,
     headers: HeaderMap,
+    _user: AuthedUser,
     Form(form): Form<CreateForm>,
 ) -> Response {
     if !csrf_ok(&session, &form.csrf).await {
@@ -257,6 +259,7 @@ pub struct UpdateForm {
 /// - `session`: tower-sessions session, used to validate the CSRF token.
 /// - `headers`: Request headers, used to detect HTMX callers.
 /// - `id`: Primary key of the task to update.
+/// - `user`: Authenticated user supplied by the [`AuthedUser`] extractor.
 /// - `form`: Decoded form body.
 ///
 /// ### Returns
@@ -268,6 +271,7 @@ pub async fn update_task(
     session: Session,
     headers: HeaderMap,
     Path(id): Path<i64>,
+    _user: AuthedUser,
     Form(form): Form<UpdateForm>,
 ) -> Response {
     if !csrf_ok(&session, &form.csrf).await {
@@ -302,6 +306,7 @@ pub struct StatusForm {
 /// - `session`: tower-sessions session, used to validate the CSRF token.
 /// - `headers`: Request headers, used to detect HTMX callers.
 /// - `id`: Primary key of the task to update.
+/// - `user`: Authenticated user supplied by the [`AuthedUser`] extractor.
 /// - `form`: Decoded form body. `status` must be one of `todo`, `in_progress`,
 ///   `done`, `cancelled`.
 ///
@@ -314,6 +319,7 @@ pub async fn set_status(
     session: Session,
     headers: HeaderMap,
     Path(id): Path<i64>,
+    _user: AuthedUser,
     Form(form): Form<StatusForm>,
 ) -> Response {
     if !csrf_ok(&session, &form.csrf).await {
@@ -348,6 +354,7 @@ pub struct DeleteForm {
 /// - `session`: tower-sessions session, used to validate the CSRF token.
 /// - `headers`: Request headers, used to detect HTMX callers.
 /// - `id`: Primary key of the task to delete.
+/// - `user`: Authenticated user supplied by the [`AuthedUser`] extractor.
 /// - `form`: Decoded form body (CSRF token only).
 ///
 /// ### Returns
@@ -359,6 +366,7 @@ pub async fn delete_task(
     session: Session,
     headers: HeaderMap,
     Path(id): Path<i64>,
+    _user: AuthedUser,
     Form(form): Form<DeleteForm>,
 ) -> Response {
     if !csrf_ok(&session, &form.csrf).await {
@@ -388,6 +396,7 @@ pub struct ReorderForm {
 /// - `state`: Shared application state.
 /// - `session`: tower-sessions session, used to validate the CSRF token.
 /// - `headers`: Request headers, used to detect HTMX callers.
+/// - `user`: Authenticated user supplied by the [`AuthedUser`] extractor.
 /// - `form`: Decoded form body. `ids` is a comma-separated list of task ids.
 ///
 /// ### Returns
@@ -398,6 +407,7 @@ pub async fn reorder_tasks(
     State(state): State<AppState>,
     session: Session,
     headers: HeaderMap,
+    _user: AuthedUser,
     Form(form): Form<ReorderForm>,
 ) -> Response {
     if !csrf_ok(&session, &form.csrf).await {
@@ -426,6 +436,7 @@ pub async fn reorder_tasks(
 /// - `state`: Shared application state.
 /// - `session`: tower-sessions session, where the preference is stored.
 /// - `headers`: Request headers, used to detect HTMX callers.
+/// - `user`: Authenticated user supplied by the [`AuthedUser`] extractor.
 /// - `form`: Decoded form body as raw key/value pairs.
 ///
 /// ### Returns
@@ -435,6 +446,7 @@ pub async fn set_filter(
     State(state): State<AppState>,
     session: Session,
     headers: HeaderMap,
+    _user: AuthedUser,
     Form(form): Form<Vec<(String, String)>>,
 ) -> Response {
     let mut csrf_token: Option<&str> = None;
@@ -620,7 +632,154 @@ fn internal_error(context: &'static str, err: anyhow::Error) -> Response {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use axum::Router;
+    use axum::body::Body;
+    use axum::http::{Request, header};
+    use axum::routing::{get, post};
+    use sqlx::SqlitePool;
+    use tower::ServiceExt;
+
     use super::*;
+    use crate::config::Config;
+    use crate::web::login;
+
+    /// Build a router with the real session layer and the routes needed to
+    /// replay an unauthenticated mutation attempt.
+    async fn build_app() -> (Router, SqlitePool) {
+        let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let config = Config {
+            bind_addr: "127.0.0.1:0".into(),
+            database_url: "sqlite::memory:".into(),
+            base_url: "http://localhost".into(),
+            session_secret: "0".repeat(64),
+            username: None,
+            password: None,
+            timezone: None,
+            log_dir: None,
+        };
+        let session_layer = crate::auth::session::build_layer(pool.clone(), &config)
+            .await
+            .unwrap();
+        let state = AppState {
+            pool: pool.clone(),
+            config: Arc::new(config),
+        };
+        let app = Router::new()
+            .route("/login", get(login::get_login))
+            .route("/tasks", post(create_task))
+            .route("/tasks/{id}/delete", post(delete_task))
+            .layer(session_layer)
+            .with_state(state);
+        (app, pool)
+    }
+
+    /// Obtain an anonymous session cookie and its valid CSRF token by scraping
+    /// the login page, exactly as an unauthenticated attacker would.
+    async fn anonymous_session(app: &Router) -> (String, String) {
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/login")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let cookie = resp
+            .headers()
+            .get(header::SET_COOKIE)
+            .expect("login page must set a session cookie")
+            .to_str()
+            .unwrap()
+            .split(';')
+            .next()
+            .unwrap()
+            .to_owned();
+        let body = read_body(resp).await;
+        let token = extract_csrf_token(&body);
+        (cookie, token)
+    }
+
+    /// Extract the `_csrf` hidden input value from a rendered page.
+    fn extract_csrf_token(html: &str) -> String {
+        let marker = r#"name="_csrf" value=""#;
+        let start = html.find(marker).expect("csrf input present") + marker.len();
+        let rest = &html[start..];
+        let end = rest.find('"').expect("csrf value terminated");
+        rest[..end].to_owned()
+    }
+
+    /// Collect a response body into a string.
+    async fn read_body(resp: Response) -> String {
+        let bytes = axum::body::to_bytes(resp.into_body(), 256 * 1024)
+            .await
+            .unwrap();
+        std::str::from_utf8(&bytes).unwrap().to_owned()
+    }
+
+    /// Count the rows currently in the tasks table.
+    async fn count_tasks(pool: &SqlitePool) -> i64 {
+        sqlx::query_scalar("SELECT COUNT(*) FROM tasks")
+            .fetch_one(pool)
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn unauthenticated_create_with_valid_csrf_is_rejected() {
+        let (app, pool) = build_app().await;
+        let (cookie, csrf) = anonymous_session(&app).await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/tasks")
+                    .header(header::COOKIE, &cookie)
+                    .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                    .body(Body::from(format!("_csrf={csrf}&title=intruder")))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+        assert_eq!(resp.headers().get(header::LOCATION).unwrap(), "/login");
+        assert_eq!(count_tasks(&pool).await, 0);
+    }
+
+    #[tokio::test]
+    async fn unauthenticated_delete_with_valid_csrf_is_rejected() {
+        let (app, pool) = build_app().await;
+        let task = task::create(
+            &pool,
+            NewTask {
+                title: "keep me".into(),
+                description: None,
+            },
+        )
+        .await
+        .unwrap();
+        let (cookie, csrf) = anonymous_session(&app).await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/tasks/{}/delete", task.id))
+                    .header(header::COOKIE, &cookie)
+                    .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                    .body(Body::from(format!("_csrf={csrf}")))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+        assert_eq!(resp.headers().get(header::LOCATION).unwrap(), "/login");
+        assert_eq!(count_tasks(&pool).await, 1);
+    }
 
     #[test]
     fn filter_view_from_default_marks_only_active_states() {
