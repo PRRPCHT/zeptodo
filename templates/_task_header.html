@@ -1,0 +1,51 @@
+<div
+	id="task-controls"
+	{% if oob %}hx-swap-oob="true"{% endif %}
+	class="flex justify-between items-center gap-2"
+>
+	<span class="text-sm opacity-60 shrink-0">{{ total }} task{% if total != 1 %}s{% endif %}</span>
+	<form
+		method="post"
+		action="/tasks/filter"
+		hx-post="/tasks/filter"
+		hx-target="#task-list"
+		hx-swap="outerHTML"
+		hx-trigger="change"
+		class="flex flex-wrap items-center justify-end gap-1"
+		aria-label="Filter tasks by status"
+	>
+		<input type="hidden" name="_csrf" value="{{ csrf_token }}" />
+		<input
+			class="filter-status btn btn-xs btn-ghost font-normal"
+			type="checkbox"
+			name="statuses"
+			value="todo"
+			aria-label="To do ({{ counts.todo }})"
+			{% if filter.todo %}checked{% endif %}
+		/>
+		<input
+			class="filter-status btn btn-xs btn-ghost font-normal"
+			type="checkbox"
+			name="statuses"
+			value="in_progress"
+			aria-label="In progress ({{ counts.in_progress }})"
+			{% if filter.in_progress %}checked{% endif %}
+		/>
+		<input
+			class="filter-status btn btn-xs btn-ghost font-normal"
+			type="checkbox"
+			name="statuses"
+			value="done"
+			aria-label="Done ({{ counts.done }})"
+			{% if filter.done %}checked{% endif %}
+		/>
+		<input
+			class="filter-status btn btn-xs btn-ghost font-normal"
+			type="checkbox"
+			name="statuses"
+			value="cancelled"
+			aria-label="Cancelled ({{ counts.cancelled }})"
+			{% if filter.cancelled %}checked{% endif %}
+		/>
+	</form>
+</div>

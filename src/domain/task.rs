@@ -109,6 +109,42 @@ pub struct UpdateTask {
 
 const SELECT_COLUMNS: &str = "id, title, description, status, position, created_at, updated_at";
 
+/// Per-status task counts across the entire master list.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct StatusCounts {
+    pub todo: i64,
+    pub in_progress: i64,
+    pub done: i64,
+    pub cancelled: i64,
+}
+
+/// Count tasks grouped by status across the whole list, ignoring any filter.
+///
+/// ### Arguments
+/// - `pool`: SQLite pool with migrations applied.
+///
+/// ### Returns
+/// - `Ok(StatusCounts)`: Counts per status, zero for any status with no rows.
+/// - `Err`: SQLite query failed.
+pub async fn count_by_status(pool: &SqlitePool) -> Result<StatusCounts> {
+    let rows: Vec<(String, i64)> =
+        sqlx::query_as("SELECT status, COUNT(*) FROM tasks GROUP BY status")
+            .fetch_all(pool)
+            .await
+            .context("counting tasks by status")?;
+    let mut counts = StatusCounts::default();
+    for (status, count) in rows {
+        match Status::parse(&status) {
+            Ok(Status::Todo) => counts.todo = count,
+            Ok(Status::InProgress) => counts.in_progress = count,
+            Ok(Status::Done) => counts.done = count,
+            Ok(Status::Cancelled) => counts.cancelled = count,
+            Err(_) => {}
+        }
+    }
+    Ok(counts)
+}
+
 /// List tasks in display order, filtered by status.
 ///
 /// ### Arguments
@@ -591,6 +627,34 @@ mod tests {
         assert_eq!(
             a_after_reorder.updated_at, restatuses.updated_at,
             "reorder must not bump updated_at"
+        );
+    }
+
+    #[tokio::test]
+    async fn count_by_status_groups_every_state() {
+        let pool = pool().await;
+        assert_eq!(
+            count_by_status(&pool).await.unwrap(),
+            StatusCounts::default()
+        );
+
+        let a = create(&pool, new("a")).await.unwrap();
+        let b = create(&pool, new("b")).await.unwrap();
+        let c = create(&pool, new("c")).await.unwrap();
+        let _d = create(&pool, new("d")).await.unwrap();
+        set_status(&pool, a.id, Status::InProgress).await.unwrap();
+        set_status(&pool, b.id, Status::Done).await.unwrap();
+        set_status(&pool, c.id, Status::Cancelled).await.unwrap();
+
+        let counts = count_by_status(&pool).await.unwrap();
+        assert_eq!(
+            counts,
+            StatusCounts {
+                todo: 1,
+                in_progress: 1,
+                done: 1,
+                cancelled: 1,
+            }
         );
     }
 

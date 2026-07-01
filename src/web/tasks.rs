@@ -149,16 +149,22 @@ struct TodosPage {
     layout: LayoutContext,
     tasks: Vec<TaskView>,
     filter: FilterView,
+    counts: task::StatusCounts,
+    total: usize,
+    oob: bool,
     csrf_token: String,
     status_options: Vec<StatusOption>,
 }
 
 #[derive(Template)]
-#[template(path = "_task_list.html")]
+#[template(path = "_task_fragment.html")]
 #[allow(dead_code)]
 struct TaskListFragment {
     tasks: Vec<TaskView>,
     filter: FilterView,
+    counts: task::StatusCounts,
+    total: usize,
+    oob: bool,
     csrf_token: String,
     status_options: Vec<StatusOption>,
 }
@@ -189,11 +195,19 @@ pub async fn dashboard(
         Ok(v) => v,
         Err(err) => return internal_error("loading tasks failed", err),
     };
+    let counts = match task::count_by_status(&state.pool).await {
+        Ok(c) => c,
+        Err(err) => return internal_error("counting tasks failed", err),
+    };
+    let total = tasks.len();
     let csrf_token = layout.csrf_token.clone();
     render(TodosPage {
         layout,
         tasks,
         filter: FilterView::from_statuses(&statuses),
+        counts,
+        total,
+        oob: false,
         csrf_token,
         status_options: status_options(),
     })
@@ -537,9 +551,17 @@ async fn respond_with_list(state: AppState, session: Session, headers: HeaderMap
             Ok(v) => v,
             Err(err) => return internal_error("loading tasks failed", err),
         };
+        let counts = match task::count_by_status(&state.pool).await {
+            Ok(c) => c,
+            Err(err) => return internal_error("counting tasks failed", err),
+        };
+        let total = tasks.len();
         render(TaskListFragment {
             tasks,
             filter: FilterView::from_statuses(&statuses),
+            counts,
+            total,
+            oob: true,
             csrf_token,
             status_options: status_options(),
         })
