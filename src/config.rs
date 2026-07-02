@@ -1,5 +1,7 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use std::env;
+
+const SESSION_SECRET_MIN_BYTES: usize = 32;
 
 /// Runtime configuration loaded from environment variables.
 ///
@@ -23,14 +25,15 @@ impl Config {
     /// Load configuration from the process environment.
     ///
     /// ### Returns
-    /// - `Ok(Config)`: All required variables are present and non-empty.
-    /// - `Err`: A required variable is missing or empty.
+    /// - `Ok(Config)`: All required variables are present, non-empty, and valid.
+    /// - `Err`: A required variable is missing or empty, or `SESSION_SECRET`
+    ///   is shorter than 32 bytes.
     pub fn from_env() -> Result<Self> {
         Ok(Self {
             bind_addr: required("BIND_ADDR")?,
             database_url: required("DATABASE_URL")?,
             base_url: required("BASE_URL")?,
-            session_secret: required("SESSION_SECRET")?,
+            session_secret: validated_session_secret(required("SESSION_SECRET")?)?,
             username: optional("USERNAME"),
             password: optional("PASSWORD"),
             timezone: optional("TIMEZONE"),
@@ -73,4 +76,41 @@ fn required(key: &str) -> Result<String> {
 /// - `None`: The variable is unset or set to the empty string.
 fn optional(key: &str) -> Option<String> {
     env::var(key).ok().filter(|v| !v.is_empty())
+}
+
+/// Validate that the session secret is long enough for cookie signing.
+///
+/// ### Arguments
+/// - `secret`: The raw `SESSION_SECRET` value.
+///
+/// ### Returns
+/// - `Ok(String)`: The secret, at least 32 bytes long.
+/// - `Err`: The secret is shorter than 32 bytes.
+fn validated_session_secret(secret: String) -> Result<String> {
+    if secret.len() < SESSION_SECRET_MIN_BYTES {
+        bail!(
+            "SESSION_SECRET must be at least {SESSION_SECRET_MIN_BYTES} bytes, got {}",
+            secret.len()
+        );
+    }
+    Ok(secret)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_secret_shorter_than_32_bytes_is_rejected() {
+        let result = validated_session_secret("x".repeat(31));
+        assert!(result.is_err());
+        let message = result.unwrap_err().to_string();
+        assert!(message.contains("at least 32 bytes"));
+    }
+
+    #[test]
+    fn session_secret_of_32_bytes_is_accepted() {
+        let secret = "x".repeat(32);
+        assert_eq!(validated_session_secret(secret.clone()).unwrap(), secret);
+    }
 }

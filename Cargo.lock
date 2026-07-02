@@ -369,7 +369,13 @@ version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ddef33a339a91ea89fb53151bd0a4689cfce27055c291dfa69945475d22c747"
 dependencies = [
+ "base64",
+ "hkdf",
+ "hmac",
  "percent-encoding",
+ "rand 0.8.6",
+ "sha2 0.10.9",
+ "subtle",
  "time",
  "version_check",
 ]
@@ -3592,6 +3598,7 @@ dependencies = [
  "base64",
  "chrono",
  "chrono-tz",
+ "cookie",
  "dotenvy",
  "governor",
  "pulldown-cmark",
