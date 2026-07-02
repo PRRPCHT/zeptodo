@@ -39,7 +39,8 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 yanked = "warn"
 
 ignore = [
-    # Add any specific advisories to ignore here if needed
+    # RUSTSEC-2023-0071: Marvin Attack timing sidechannel in `rsa`.
+    "RUSTSEC-2023-0071",
 ]
 
 unmaintained = "all"
