@@ -43,7 +43,10 @@ async fn main() -> Result<()> {
         config: Arc::new(cfg.clone()),
     };
 
+    let mut retain_handles: Vec<web::rate_limit::RetainHandle> = Vec::new();
+
     let api_rate_limit_config = web::rate_limit::api_config();
+    retain_handles.push(web::rate_limit::retain_handle(&api_rate_limit_config));
     let api_rate_limit_layer: GovernorLayer<_, _, axum::body::Body> =
         GovernorLayer::new(api_rate_limit_config).error_handler(web::rate_limit::api_error);
 
@@ -71,9 +74,13 @@ async fn main() -> Result<()> {
         get(web::login::get_login).post(web::login::post_login),
     );
     let login_routes = if behind_proxy {
-        login_routes.layer(web::rate_limit::login_layer(SmartIpKeyExtractor))
+        let (layer, retain) = web::rate_limit::login_layer(SmartIpKeyExtractor);
+        retain_handles.push(retain);
+        login_routes.layer(layer)
     } else {
-        login_routes.layer(web::rate_limit::login_layer(PeerIpKeyExtractor))
+        let (layer, retain) = web::rate_limit::login_layer(PeerIpKeyExtractor);
+        retain_handles.push(retain);
+        login_routes.layer(layer)
     };
 
     let app = Router::new()
@@ -107,10 +114,16 @@ async fn main() -> Result<()> {
         .layer(session_layer);
 
     let app = if behind_proxy {
-        app.layer(web::rate_limit::global_layer(SmartIpKeyExtractor))
+        let (layer, retain) = web::rate_limit::global_layer(SmartIpKeyExtractor);
+        retain_handles.push(retain);
+        app.layer(layer)
     } else {
-        app.layer(web::rate_limit::global_layer(PeerIpKeyExtractor))
+        let (layer, retain) = web::rate_limit::global_layer(PeerIpKeyExtractor);
+        retain_handles.push(retain);
+        app.layer(layer)
     };
+
+    web::rate_limit::spawn_retain_task(retain_handles);
 
     let app = app
         .layer(web::security::csp_layer())
