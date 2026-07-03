@@ -1,3 +1,4 @@
+use std::hash::Hash;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -7,7 +8,8 @@ use axum::http::Method;
 use axum::http::Request;
 use axum::http::header::AUTHORIZATION;
 use axum::response::IntoResponse;
-use governor::middleware::NoOpMiddleware;
+use governor::clock::QuantaInstant;
+use governor::middleware::{NoOpMiddleware, RateLimitingMiddleware};
 use sha2::{Digest, Sha256};
 use tower_governor::GovernorError;
 use tower_governor::GovernorLayer;
@@ -31,6 +33,12 @@ const API_PERIOD_MILLIS: u64 = 1_000;
 const GLOBAL_BURST: u32 = 120;
 /// Replenish rate for the global limiter, in milliseconds per token (10 req/s sustained).
 const GLOBAL_PERIOD_MILLIS: u64 = 100;
+
+/// Interval between passes that prune stale buckets from the limiter key maps.
+const RETAIN_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Type-erased callback that prunes one rate limiter's key map of stale buckets.
+pub type RetainHandle = Box<dyn Fn() + Send + Sync + 'static>;
 
 /// Build the rate-limit configuration applied to `POST /login`, keyed by the
 /// caller's IP as resolved by `extractor`.
@@ -83,12 +91,16 @@ where
 /// - `extractor`: How the client IP is derived (see `login_config`).
 ///
 /// ### Returns
-/// - The layer, with the HTML error renderer wired in.
-pub fn login_layer<K>(extractor: K) -> GovernorLayer<K, NoOpMiddleware, Body>
+/// - `(layer, handle)`: The layer with the HTML error renderer wired in, and a
+///   pruning handle for the layer's limiter (feed it to `spawn_retain_task`).
+pub fn login_layer<K>(extractor: K) -> (GovernorLayer<K, NoOpMiddleware, Body>, RetainHandle)
 where
     K: KeyExtractor,
+    K::Key: Hash + Eq + Clone + Send + Sync + 'static,
 {
-    GovernorLayer::new(login_config(extractor)).error_handler(html_error)
+    let config = login_config(extractor);
+    let handle = retain_handle(&config);
+    (GovernorLayer::new(config).error_handler(html_error), handle)
 }
 
 /// Build the global `GovernorLayer` applied to every request, keyed by `extractor`.
@@ -97,12 +109,50 @@ where
 /// - `extractor`: How the client IP is derived (see `login_config`).
 ///
 /// ### Returns
-/// - The layer, with the HTML error renderer wired in.
-pub fn global_layer<K>(extractor: K) -> GovernorLayer<K, NoOpMiddleware, Body>
+/// - `(layer, handle)`: The layer with the HTML error renderer wired in, and a
+///   pruning handle for the layer's limiter (feed it to `spawn_retain_task`).
+pub fn global_layer<K>(extractor: K) -> (GovernorLayer<K, NoOpMiddleware, Body>, RetainHandle)
 where
     K: KeyExtractor,
+    K::Key: Hash + Eq + Clone + Send + Sync + 'static,
 {
-    GovernorLayer::new(global_config(extractor)).error_handler(html_error)
+    let config = global_config(extractor);
+    let handle = retain_handle(&config);
+    (GovernorLayer::new(config).error_handler(html_error), handle)
+}
+
+/// Build a pruning handle for the limiter backing `config`.
+///
+/// ### Arguments
+/// - `config`: The limiter configuration whose key map should be prunable.
+///
+/// ### Returns
+/// - `RetainHandle`: A callback that prunes the limiter's stale buckets when invoked.
+pub fn retain_handle<K, M>(config: &Arc<GovernorConfig<K, M>>) -> RetainHandle
+where
+    K: KeyExtractor,
+    K::Key: Hash + Eq + Clone + Send + Sync + 'static,
+    M: RateLimitingMiddleware<QuantaInstant> + Send + Sync + 'static,
+{
+    let limiter = config.limiter().clone();
+    Box::new(move || limiter.retain_recent())
+}
+
+/// Spawn a background task that prunes every limiter's key map on a fixed interval.
+///
+/// ### Arguments
+/// - `handles`: One pruning handle per limiter, produced by the layer builders
+///   or `retain_handle`.
+pub fn spawn_retain_task(handles: Vec<RetainHandle>) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(RETAIN_INTERVAL);
+        loop {
+            interval.tick().await;
+            for handle in &handles {
+                handle();
+            }
+        }
+    });
 }
 
 /// Build the rate-limit configuration applied to `/api/v1/*`, keyed by the
@@ -273,6 +323,18 @@ mod tests {
             .extract(&req_with_auth(Some("Bearer xyz")))
             .unwrap();
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn retain_handle_prunes_without_disrupting_the_limiter() {
+        let config = api_config();
+        let limiter = config.limiter().clone();
+        let handle = retain_handle(&config);
+
+        assert!(limiter.check_key(&"token-a".to_owned()).is_ok());
+        handle();
+        handle();
+        assert!(limiter.check_key(&"token-b".to_owned()).is_ok());
     }
 
     #[test]
