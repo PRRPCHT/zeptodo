@@ -111,6 +111,7 @@ sudo chown -R 1000:1000 ./data
 | `USERNAME` | (none, required at first boot) | Login username |
 | `PASSWORD` | (none, required at first boot) | Login password (plaintext in env, hashed before storage) |
 | `TIMEZONE` | `UTC` | IANA timezone name (e.g. `Europe/Paris`) |
+| `BEHIND_PROXY` | `false` | Set to `true` only when a trusted reverse proxy sits in front. Then rate limiting trusts `X-Forwarded-For` / `X-Real-Ip` / `Forwarded`. Left `false` (the default), rate limiting keys on the direct socket address, which cannot be spoofed. Enabling this while exposed directly lets clients bypass the login and global rate limits by forging the header. |
 | `LOG_DIR` | `/data/logs` | Daily-rotated JSON logs with 7-day retention. Stdout is always on. |
 
 ### Credentials rotation
