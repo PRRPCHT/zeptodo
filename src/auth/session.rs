@@ -1,8 +1,10 @@
 use anyhow::{Context, Result};
 use sqlx::SqlitePool;
+use std::time::Duration as StdDuration;
 use time::Duration;
 use tower_sessions::cookie::{Key, SameSite};
 use tower_sessions::service::SignedCookie;
+use tower_sessions::session_store::ExpiredDeletion;
 use tower_sessions::{Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::SqliteStore;
 
@@ -10,6 +12,7 @@ use crate::config::Config;
 
 const COOKIE_NAME: &str = "zeptodo_sid";
 const IDLE_DAYS: i64 = 7;
+const EXPIRED_CLEANUP_INTERVAL: StdDuration = StdDuration::from_secs(3600);
 
 /// Build the `tower-sessions` layer backed by SQLite, with cookie signing.
 ///
@@ -31,6 +34,17 @@ pub async fn build_layer(
         .migrate()
         .await
         .context("session store migration failed")?;
+
+    let cleanup_store = store.clone();
+    tokio::spawn(async move {
+        if let Err(error) = cleanup_store
+            .continuously_delete_expired(EXPIRED_CLEANUP_INTERVAL)
+            .await
+        {
+            tracing::error!(?error, "expired session cleanup task stopped");
+        }
+    });
+
     let signing_key = Key::derive_from(cfg.session_secret.as_bytes());
     Ok(SessionManagerLayer::new(store)
         .with_signed(signing_key)
