@@ -212,6 +212,7 @@ mod tests {
             password: password.map(str::to_string),
             timezone: timezone.map(str::to_string),
             log_dir: None,
+            behind_proxy: false,
         }
     }
 

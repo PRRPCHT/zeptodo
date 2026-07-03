@@ -1,15 +1,18 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::body::Body;
 use axum::http::HeaderValue;
 use axum::http::Method;
 use axum::http::Request;
 use axum::http::header::AUTHORIZATION;
 use axum::response::IntoResponse;
+use governor::middleware::NoOpMiddleware;
 use sha2::{Digest, Sha256};
 use tower_governor::GovernorError;
+use tower_governor::GovernorLayer;
 use tower_governor::governor::{GovernorConfig, GovernorConfigBuilder};
-use tower_governor::key_extractor::{KeyExtractor, SmartIpKeyExtractor};
+use tower_governor::key_extractor::KeyExtractor;
 
 use crate::api::errors::ApiError;
 
@@ -29,14 +32,22 @@ const GLOBAL_BURST: u32 = 120;
 /// Replenish rate for the global limiter, in milliseconds per token (10 req/s sustained).
 const GLOBAL_PERIOD_MILLIS: u64 = 100;
 
-/// Build the rate-limit configuration applied to `POST /login`, keyed by client IP.
+/// Build the rate-limit configuration applied to `POST /login`, keyed by the
+/// caller's IP as resolved by `extractor`.
+///
+/// ### Arguments
+/// - `extractor`: How the client IP is derived. Use `PeerIpKeyExtractor` to key
+///   on the spoof-proof socket address, or `SmartIpKeyExtractor` to trust
+///   forwarding headers when a reverse proxy is in front.
 ///
 /// ### Returns
 /// - The shareable configuration, wrapped in `Arc` for use with `GovernorLayer`.
-pub fn login_config()
--> Arc<GovernorConfig<SmartIpKeyExtractor, governor::middleware::NoOpMiddleware>> {
+pub fn login_config<K>(extractor: K) -> Arc<GovernorConfig<K, NoOpMiddleware>>
+where
+    K: KeyExtractor,
+{
     let cfg = GovernorConfigBuilder::default()
-        .key_extractor(SmartIpKeyExtractor)
+        .key_extractor(extractor)
         .per_second(LOGIN_PERIOD_SECS)
         .burst_size(LOGIN_BURST)
         .methods(vec![Method::POST])
@@ -45,19 +56,53 @@ pub fn login_config()
     Arc::new(cfg)
 }
 
-/// Build the global rate-limit configuration applied to every request, keyed by client IP.
+/// Build the global rate-limit configuration applied to every request, keyed by
+/// the caller's IP as resolved by `extractor`.
+///
+/// ### Arguments
+/// - `extractor`: How the client IP is derived. See `login_config`.
 ///
 /// ### Returns
 /// - The shareable configuration, wrapped in `Arc` for use with `GovernorLayer`.
-pub fn global_config()
--> Arc<GovernorConfig<SmartIpKeyExtractor, governor::middleware::NoOpMiddleware>> {
+pub fn global_config<K>(extractor: K) -> Arc<GovernorConfig<K, NoOpMiddleware>>
+where
+    K: KeyExtractor,
+{
     let cfg = GovernorConfigBuilder::default()
-        .key_extractor(SmartIpKeyExtractor)
+        .key_extractor(extractor)
         .period(Duration::from_millis(GLOBAL_PERIOD_MILLIS))
         .burst_size(GLOBAL_BURST)
         .finish()
         .expect("global governor config: non-zero burst and period");
     Arc::new(cfg)
+}
+
+/// Build the `GovernorLayer` for `POST /login`, keyed by `extractor`.
+///
+/// ### Arguments
+/// - `extractor`: How the client IP is derived (see `login_config`).
+///
+/// ### Returns
+/// - The layer, with the HTML error renderer wired in.
+pub fn login_layer<K>(extractor: K) -> GovernorLayer<K, NoOpMiddleware, Body>
+where
+    K: KeyExtractor,
+{
+    GovernorLayer::new(login_config(extractor)).error_handler(html_error)
+}
+
+/// Build the global `GovernorLayer` applied to every request, keyed by `extractor`.
+///
+/// ### Arguments
+/// - `extractor`: How the client IP is derived (see `login_config`).
+///
+/// ### Returns
+/// - The layer, with the HTML error renderer wired in.
+pub fn global_layer<K>(extractor: K) -> GovernorLayer<K, NoOpMiddleware, Body>
+where
+    K: KeyExtractor,
+{
+    GovernorLayer::new(global_config(extractor)).error_handler(html_error)
 }
 
 /// Build the rate-limit configuration applied to `/api/v1/*`, keyed by the
