@@ -5,6 +5,7 @@ use sqlx::SqlitePool;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_governor::GovernorLayer;
+use tower_governor::key_extractor::{PeerIpKeyExtractor, SmartIpKeyExtractor};
 use tower_http::services::ServeDir;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::layer::SubscriberExt;
@@ -62,18 +63,18 @@ async fn main() -> Result<()> {
         ))
         .layer(api_rate_limit_layer);
 
-    let login_rate_limit_config = web::rate_limit::login_config();
-    let login_rate_limit_layer: GovernorLayer<_, _, axum::body::Body> =
-        GovernorLayer::new(login_rate_limit_config).error_handler(web::rate_limit::html_error);
-
     let cookies_secure = cfg.cookies_secure();
+    let behind_proxy = cfg.behind_proxy;
 
-    let login_routes = Router::new()
-        .route(
-            "/login",
-            get(web::login::get_login).post(web::login::post_login),
-        )
-        .layer(login_rate_limit_layer);
+    let login_routes = Router::new().route(
+        "/login",
+        get(web::login::get_login).post(web::login::post_login),
+    );
+    let login_routes = if behind_proxy {
+        login_routes.layer(web::rate_limit::login_layer(SmartIpKeyExtractor))
+    } else {
+        login_routes.layer(web::rate_limit::login_layer(PeerIpKeyExtractor))
+    };
 
     let app = Router::new()
         .route("/", get(web::tasks::dashboard))
@@ -103,13 +104,15 @@ async fn main() -> Result<()> {
         .nest("/api/v1", api_v1)
         .nest_service("/static", ServeDir::new("static"))
         .layer(TraceLayer::new_for_http())
-        .layer(session_layer)
-        .layer({
-            let cfg = web::rate_limit::global_config();
-            let layer: GovernorLayer<_, _, axum::body::Body> =
-                GovernorLayer::new(cfg).error_handler(web::rate_limit::html_error);
-            layer
-        })
+        .layer(session_layer);
+
+    let app = if behind_proxy {
+        app.layer(web::rate_limit::global_layer(SmartIpKeyExtractor))
+    } else {
+        app.layer(web::rate_limit::global_layer(PeerIpKeyExtractor))
+    };
+
+    let app = app
         .layer(web::security::csp_layer())
         .layer(web::security::nosniff_layer())
         .layer(web::security::frame_options_layer())

@@ -681,6 +681,7 @@ mod tests {
             password: None,
             timezone: None,
             log_dir: None,
+            behind_proxy: false,
         };
         let session_layer = crate::auth::session::build_layer(pool.clone(), &config)
             .await

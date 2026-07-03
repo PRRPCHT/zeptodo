@@ -296,6 +296,7 @@ mod tests {
             password: None,
             timezone: None,
             log_dir: None,
+            behind_proxy: false,
         };
         let state = AppState {
             pool: pool.clone(),

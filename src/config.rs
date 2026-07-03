@@ -19,6 +19,7 @@ pub struct Config {
     pub password: Option<String>,
     pub timezone: Option<String>,
     pub log_dir: Option<String>,
+    pub behind_proxy: bool,
 }
 
 impl Config {
@@ -38,6 +39,7 @@ impl Config {
             password: optional("PASSWORD"),
             timezone: optional("TIMEZONE"),
             log_dir: optional("LOG_DIR"),
+            behind_proxy: env_flag("BEHIND_PROXY"),
         })
     }
 
@@ -78,6 +80,23 @@ fn optional(key: &str) -> Option<String> {
     env::var(key).ok().filter(|v| !v.is_empty())
 }
 
+/// Read an environment variable as a boolean flag, defaulting to `false`.
+///
+/// ### Arguments
+/// - `key`: Name of the environment variable to read.
+///
+/// ### Returns
+/// - `bool`: `true` only when the value is one of the accepted truthy tokens.
+fn env_flag(key: &str) -> bool {
+    match optional(key) {
+        Some(value) => matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        ),
+        None => false,
+    }
+}
+
 /// Validate that the session secret is long enough for cookie signing.
 ///
 /// ### Arguments
@@ -112,5 +131,20 @@ mod tests {
     fn session_secret_of_32_bytes_is_accepted() {
         let secret = "x".repeat(32);
         assert_eq!(validated_session_secret(secret.clone()).unwrap(), secret);
+    }
+
+    #[test]
+    fn env_flag_reads_truthy_and_falsy_values() {
+        let key = "ZEPTODO_TEST_BEHIND_PROXY_FLAG";
+        for truthy in ["1", "true", "TRUE", " yes ", "On"] {
+            unsafe { env::set_var(key, truthy) };
+            assert!(env_flag(key), "expected {truthy:?} to be truthy");
+        }
+        for falsy in ["0", "false", "no", "off", "", "banana"] {
+            unsafe { env::set_var(key, falsy) };
+            assert!(!env_flag(key), "expected {falsy:?} to be falsy");
+        }
+        unsafe { env::remove_var(key) };
+        assert!(!env_flag(key));
     }
 }
