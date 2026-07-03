@@ -96,11 +96,11 @@ pub async fn post_login(
         }
     };
 
+    // Verify the password unconditionally so that a wrong username and a wrong password take the same time.
     let username_ok = creds.username == attempted_username;
-    let password_ok =
-        username_ok && password::verify(&form.password, &creds.password_hash).unwrap_or(false);
+    let password_ok = password::verify(&form.password, &creds.password_hash).unwrap_or(false);
 
-    if !password_ok {
+    if !(username_ok && password_ok) {
         tracing::warn!(
             target: "audit",
             username = %attempted_username,
