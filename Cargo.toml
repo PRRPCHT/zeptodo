@@ -27,6 +27,7 @@ rand = "0.10.1"
 base64 = "0.22"
 subtle = "2.6"
 tower-sessions = { version = "0.14", features = ["signed"] }
+tower-sessions-core = { version = "0.14", default-features = false, features = ["deletion-task"] }
 cookie = { version = "0.18", features = ["key-expansion"] }
 tower-sessions-sqlx-store = { version = "0.15", features = ["sqlite"] }
 pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
