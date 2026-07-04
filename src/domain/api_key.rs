@@ -13,6 +13,9 @@ const KEY_BYTES: usize = 32;
 /// Length of the visible key prefix stored alongside the hash.
 const PREFIX_LEN: usize = 8;
 
+/// Minimum age of `last_used_at` before a repeat use refreshes it.
+const LAST_USED_THROTTLE_SECONDS: i64 = 60;
+
 /// A persisted API key row. Plaintext value is never stored.
 #[derive(Debug, Clone, sqlx::FromRow)]
 #[allow(dead_code)]
@@ -304,24 +307,32 @@ pub async fn verify(pool: &SqlitePool, plaintext: &str) -> Result<Option<Verifie
 /// - `id`: Primary key of the row to stamp.
 ///
 /// ### Returns
-/// - `Ok(true)`: The row existed and `last_used_at` was previously `NULL`.
+/// - `Ok(true)`: The row existed and this call flipped its `NULL` `last_used_at`.
 /// - `Ok(false)`: The row did not exist, or `last_used_at` was already set.
 /// - `Err`: SQLite query failed.
 pub async fn mark_used(pool: &SqlitePool, id: i64) -> Result<bool> {
     let now = Utc::now();
-    let prev: Option<Option<DateTime<Utc>>> =
-        sqlx::query_scalar("SELECT last_used_at FROM api_keys WHERE id = ?")
+    let first_use =
+        sqlx::query("UPDATE api_keys SET last_used_at = ?1 WHERE id = ?2 AND last_used_at IS NULL")
+            .bind(now)
             .bind(id)
-            .fetch_optional(pool)
+            .execute(pool)
             .await
-            .context("reading last_used_at")?;
-    sqlx::query("UPDATE api_keys SET last_used_at = ? WHERE id = ?")
+            .context("stamping first api key use")?
+            .rows_affected()
+            == 1;
+    if first_use {
+        return Ok(true);
+    }
+    let throttle_cutoff = now - Duration::seconds(LAST_USED_THROTTLE_SECONDS);
+    sqlx::query("UPDATE api_keys SET last_used_at = ?1 WHERE id = ?2 AND last_used_at < ?3")
         .bind(now)
         .bind(id)
+        .bind(throttle_cutoff)
         .execute(pool)
         .await
-        .context("updating last_used_at")?;
-    Ok(matches!(prev, Some(None)))
+        .context("refreshing api key last_used_at")?;
+    Ok(false)
 }
 
 /// Delete an API key by id.
@@ -500,6 +511,47 @@ mod tests {
         assert!(!second);
         let reloaded = get(&pool, created.record.id).await.unwrap().unwrap();
         assert!(reloaded.last_used_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn mark_used_within_throttle_window_skips_refresh() {
+        let pool = pool().await;
+        let created = create(&pool, None, ExpiryChoice::Never).await.unwrap();
+        assert!(mark_used(&pool, created.record.id).await.unwrap());
+        let stamped = get(&pool, created.record.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .last_used_at;
+        assert!(!mark_used(&pool, created.record.id).await.unwrap());
+        let unchanged = get(&pool, created.record.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .last_used_at;
+        assert_eq!(stamped, unchanged);
+    }
+
+    #[tokio::test]
+    async fn mark_used_refreshes_after_throttle_window() {
+        let pool = pool().await;
+        let created = create(&pool, None, ExpiryChoice::Never).await.unwrap();
+        assert!(mark_used(&pool, created.record.id).await.unwrap());
+        let stale = Utc::now() - Duration::seconds(LAST_USED_THROTTLE_SECONDS + 1);
+        sqlx::query("UPDATE api_keys SET last_used_at = ?1 WHERE id = ?2")
+            .bind(stale)
+            .bind(created.record.id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(!mark_used(&pool, created.record.id).await.unwrap());
+        let refreshed = get(&pool, created.record.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .last_used_at
+            .unwrap();
+        assert!(refreshed > stale);
     }
 
     #[test]
