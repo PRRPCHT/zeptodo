@@ -665,10 +665,18 @@ mod tests {
 
     use super::*;
     use crate::config::Config;
+    use crate::domain::credentials;
     use crate::web::login;
 
-    /// Build a router with the real session layer and the routes needed to
-    /// replay an unauthenticated mutation attempt.
+    const TEST_USERNAME: &str = "tester";
+    const TEST_PASSWORD: &str = "correct-horse-battery";
+
+    /// Build a router mirroring the production web routes, backed by an
+    /// in-memory database seeded with a single set of login credentials.
+    ///
+    /// ### Returns
+    /// - `(Router, SqlitePool)`: The wired router and its backing pool, so tests
+    ///   can assert on the database directly.
     async fn build_app() -> (Router, SqlitePool) {
         let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
         sqlx::migrate!("./migrations").run(&pool).await.unwrap();
@@ -677,12 +685,13 @@ mod tests {
             database_url: "sqlite::memory:".into(),
             base_url: "http://localhost".into(),
             session_secret: "0".repeat(64),
-            username: None,
-            password: None,
-            timezone: None,
+            username: Some(TEST_USERNAME.into()),
+            password: Some(TEST_PASSWORD.into()),
+            timezone: Some("UTC".into()),
             log_dir: None,
             behind_proxy: false,
         };
+        credentials::reconcile(&pool, &config).await.unwrap();
         let session_layer = crate::auth::session::build_layer(pool.clone(), &config)
             .await
             .unwrap();
@@ -691,12 +700,61 @@ mod tests {
             config: Arc::new(config),
         };
         let app = Router::new()
-            .route("/login", get(login::get_login))
+            .route("/", get(dashboard))
+            .route("/login", get(login::get_login).post(login::post_login))
+            .route("/logout", post(login::post_logout))
             .route("/tasks", post(create_task))
             .route("/tasks/{id}/delete", post(delete_task))
             .layer(session_layer)
             .with_state(state);
         (app, pool)
+    }
+
+    /// Extract the `zeptodo_sid` session cookie from a response, if present.
+    ///
+    /// ### Arguments
+    /// - `resp`: The response whose `Set-Cookie` headers are inspected.
+    ///
+    /// ### Returns
+    /// - `Some(String)`: The `name=value` pair of the session cookie.
+    /// - `None`: No session cookie was set on this response.
+    fn session_cookie(resp: &Response) -> Option<String> {
+        resp.headers()
+            .get_all(header::SET_COOKIE)
+            .iter()
+            .filter_map(|value| value.to_str().ok())
+            .map(|cookie| cookie.split(';').next().unwrap_or_default().to_owned())
+            .find(|cookie| cookie.starts_with("zeptodo_sid="))
+    }
+
+    /// Perform a full login round trip and return the authenticated cookie.
+    ///
+    /// ### Arguments
+    /// - `app`: The router under test.
+    ///
+    /// ### Returns
+    /// - `(String, String)`: The authenticated session cookie and the CSRF token.
+    async fn authenticated_session(app: &Router) -> (String, String) {
+        let (anon_cookie, csrf) = anonymous_session(app).await;
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/login")
+                    .header(header::COOKIE, &anon_cookie)
+                    .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                    .body(Body::from(format!(
+                        "_csrf={csrf}&username={TEST_USERNAME}&password={TEST_PASSWORD}"
+                    )))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+        assert_eq!(resp.headers().get(header::LOCATION).unwrap(), "/");
+        let cookie = session_cookie(&resp).unwrap_or(anon_cookie);
+        (cookie, csrf)
     }
 
     /// Obtain an anonymous session cookie and its valid CSRF token by scraping
@@ -802,6 +860,135 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::SEE_OTHER);
         assert_eq!(resp.headers().get(header::LOCATION).unwrap(), "/login");
         assert_eq!(count_tasks(&pool).await, 1);
+    }
+
+    #[tokio::test]
+    async fn anonymous_dashboard_redirects_to_login() {
+        let (app, _pool) = build_app().await;
+        let resp = app
+            .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+        assert_eq!(resp.headers().get(header::LOCATION).unwrap(), "/login");
+    }
+
+    #[tokio::test]
+    async fn login_round_trip_reaches_dashboard() {
+        let (app, _pool) = build_app().await;
+        let (cookie, _csrf) = authenticated_session(&app).await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .header(header::COOKIE, &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = read_body(resp).await;
+        assert!(body.contains("Add a task..."));
+        assert!(body.contains(TEST_USERNAME));
+    }
+
+    #[tokio::test]
+    async fn authenticated_create_with_wrong_csrf_is_forbidden() {
+        let (app, pool) = build_app().await;
+        let (cookie, _csrf) = authenticated_session(&app).await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/tasks")
+                    .header(header::COOKIE, &cookie)
+                    .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                    .body(Body::from("_csrf=not-the-real-token&title=sneaky"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        assert_eq!(count_tasks(&pool).await, 0);
+    }
+
+    #[tokio::test]
+    async fn authenticated_create_full_page_redirects_and_persists() {
+        let (app, pool) = build_app().await;
+        let (cookie, csrf) = authenticated_session(&app).await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/tasks")
+                    .header(header::COOKIE, &cookie)
+                    .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                    .body(Body::from(format!("_csrf={csrf}&title=buy+milk")))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+        assert_eq!(resp.headers().get(header::LOCATION).unwrap(), "/");
+        assert_eq!(count_tasks(&pool).await, 1);
+    }
+
+    #[tokio::test]
+    async fn authenticated_create_htmx_returns_fragment() {
+        let (app, pool) = build_app().await;
+        let (cookie, csrf) = authenticated_session(&app).await;
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/tasks")
+                    .header(header::COOKIE, &cookie)
+                    .header("HX-Request", "true")
+                    .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                    .body(Body::from(format!("_csrf={csrf}&title=fragment+task")))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(count_tasks(&pool).await, 1);
+        let body = read_body(resp).await;
+        assert!(body.contains("fragment task"));
+    }
+
+    #[tokio::test]
+    async fn logout_clears_session_and_blocks_dashboard() {
+        let (app, _pool) = build_app().await;
+        let (cookie, csrf) = authenticated_session(&app).await;
+        let resp = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/logout")
+                    .header(header::COOKIE, &cookie)
+                    .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                    .body(Body::from(format!("_csrf={csrf}")))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+        assert_eq!(resp.headers().get(header::LOCATION).unwrap(), "/login");
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/")
+                    .header(header::COOKIE, &cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+        assert_eq!(resp.headers().get(header::LOCATION).unwrap(), "/login");
     }
 
     #[test]
