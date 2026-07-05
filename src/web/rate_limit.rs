@@ -17,6 +17,7 @@ use tower_governor::governor::{GovernorConfig, GovernorConfigBuilder};
 use tower_governor::key_extractor::KeyExtractor;
 
 use crate::api::errors::ApiError;
+use crate::domain::api_key::hex_encode;
 
 /// Login burst budget. 5 attempts within `LOGIN_PERIOD_SECS` per client IP.
 const LOGIN_BURST: u32 = 5;
@@ -267,23 +268,6 @@ impl KeyExtractor for BearerHashKeyExtractor {
             None => Ok("none".to_owned()),
         }
     }
-}
-
-/// Encode a byte slice as a lowercase hex string.
-///
-/// ### Arguments
-/// - `bytes`: Input bytes (typically the 32-byte SHA-256 digest).
-///
-/// ### Returns
-/// - A 2-bytes-per-byte lowercase hex string.
-fn hex_encode(bytes: &[u8]) -> String {
-    const TABLE: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        out.push(TABLE[(b >> 4) as usize] as char);
-        out.push(TABLE[(b & 0x0f) as usize] as char);
-    }
-    out
 }
 
 #[cfg(test)]

@@ -118,10 +118,22 @@ fn mint_plaintext() -> String {
 /// ### Returns
 /// - `String`: Lowercase hex of the SHA-256 digest (64 characters).
 pub fn hash(plaintext: &str) -> String {
-    let digest = Sha256::digest(plaintext.as_bytes());
-    let mut out = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        out.push_str(&format!("{byte:02x}"));
+    hex_encode(&Sha256::digest(plaintext.as_bytes()))
+}
+
+/// Encode a byte slice as a lowercase hex string.
+///
+/// ### Arguments
+/// - `bytes`: Input bytes (typically a 32-byte SHA-256 digest).
+///
+/// ### Returns
+/// - `String`: A 2-characters-per-byte lowercase hex string.
+pub(crate) fn hex_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        out.push(TABLE[(b >> 4) as usize] as char);
+        out.push(TABLE[(b & 0x0f) as usize] as char);
     }
     out
 }
