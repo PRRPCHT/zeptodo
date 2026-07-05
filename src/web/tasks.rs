@@ -17,6 +17,8 @@ use crate::web::theme::Theme;
 
 const SESSION_FILTER_KEY: &str = "status_filter";
 
+const MAX_DESCRIPTION_LEN: usize = 16 * 1024;
+
 const DEFAULT_FILTER: [Status; 2] = [Status::Todo, Status::InProgress];
 
 const ICON_TODO: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-5"><circle cx="12" cy="12" r="9"/></svg>"##;
@@ -248,7 +250,10 @@ pub async fn create_task(
     if title.is_empty() || title.len() > 128 {
         return bad_request("title must be 1 to 128 characters");
     }
-    let description = sanitize_optional(form.description.as_deref());
+    let description = match sanitize_description(form.description.as_deref()) {
+        Ok(description) => description,
+        Err(message) => return bad_request(message),
+    };
 
     let dto = NewTask { title, description };
     if let Err(err) = task::create(&state.pool, dto).await {
@@ -295,7 +300,10 @@ pub async fn update_task(
     if title.is_empty() || title.len() > 128 {
         return bad_request("title must be 1 to 128 characters");
     }
-    let description = sanitize_optional(form.description.as_deref());
+    let description = match sanitize_description(form.description.as_deref()) {
+        Ok(description) => description,
+        Err(message) => return bad_request(message),
+    };
 
     let dto = UpdateTask { title, description };
     match task::update(&state.pool, id, dto).await {
@@ -581,16 +589,25 @@ fn is_htmx(headers: &HeaderMap) -> bool {
     headers.get("HX-Request").is_some()
 }
 
-/// Normalise an optional form field, returning `None` for whitespace-only input.
+/// Normalise and validate an optional description submitted through a web form.
 ///
 /// ### Arguments
 /// - `input`: The raw value from the form, if any.
 ///
 /// ### Returns
-/// - `Some(String)`: The input is non-empty after trimming.
-/// - `None`: The input was missing, empty, or whitespace-only.
-fn sanitize_optional(input: Option<&str>) -> Option<String> {
-    input.map(|s| s.trim().to_owned()).filter(|s| !s.is_empty())
+/// - `Ok(Some(String))`: A trimmed non-empty description within the size limit.
+/// - `Ok(None)`: The input was missing, empty, or whitespace-only.
+/// - `Err(&str)`: The error message when the description exceeds the size limit.
+fn sanitize_description(input: Option<&str>) -> Result<Option<String>, &'static str> {
+    let Some(value) = input else { return Ok(None) };
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.len() > MAX_DESCRIPTION_LEN {
+        return Err("description must be at most 16384 characters");
+    }
+    Ok(Some(trimmed.to_owned()))
 }
 
 /// Render an Askama template into an HTML response.
@@ -955,6 +972,46 @@ mod tests {
         assert_eq!(count_tasks(&pool).await, 1);
         let body = read_body(resp).await;
         assert!(body.contains("fragment task"));
+    }
+
+    #[tokio::test]
+    async fn authenticated_create_with_oversize_description_is_rejected() {
+        let (app, pool) = build_app().await;
+        let (cookie, csrf) = authenticated_session(&app).await;
+        let oversize = "a".repeat(MAX_DESCRIPTION_LEN + 1);
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/tasks")
+                    .header(header::COOKIE, &cookie)
+                    .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                    .body(Body::from(format!(
+                        "_csrf={csrf}&title=too+long&description={oversize}"
+                    )))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(count_tasks(&pool).await, 0);
+    }
+
+    #[test]
+    fn sanitize_description_enforces_size_limit() {
+        assert!(sanitize_description(None).unwrap().is_none());
+        assert!(sanitize_description(Some("   ")).unwrap().is_none());
+        assert_eq!(
+            sanitize_description(Some("  hello  ")).unwrap(),
+            Some("hello".to_owned())
+        );
+        let at_limit = "a".repeat(MAX_DESCRIPTION_LEN);
+        assert_eq!(
+            sanitize_description(Some(&at_limit)).unwrap(),
+            Some(at_limit.clone())
+        );
+        let over_limit = "a".repeat(MAX_DESCRIPTION_LEN + 1);
+        assert!(sanitize_description(Some(&over_limit)).is_err());
     }
 
     #[tokio::test]
