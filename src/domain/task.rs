@@ -280,6 +280,23 @@ pub async fn set_status(pool: &SqlitePool, id: i64, status: Status) -> Result<Op
     get(pool, id).await
 }
 
+/// Build a single `UPDATE` that rewrites `position` for a batch of ids.
+///
+/// ### Arguments
+/// - `count`: Number of ids in the batch. Must be greater than zero.
+///
+/// ### Returns
+/// - `String`: The parameterized SQL statement.
+fn build_position_case_sql(count: usize) -> String {
+    let mut sql = String::from("UPDATE tasks SET position = CASE id");
+    for _ in 0..count {
+        sql.push_str(" WHEN ? THEN ?");
+    }
+    let in_placeholders = vec!["?"; count].join(", ");
+    sql.push_str(&format!(" END WHERE id IN ({in_placeholders})"));
+    sql
+}
+
 /// Rewrite positions to match a new visible ordering.
 ///
 /// ### Description
@@ -307,47 +324,55 @@ pub async fn reorder(pool: &SqlitePool, ordered_ids: &[i64]) -> Result<usize> {
     }
     let mut tx = pool.begin().await.context("starting reorder tx")?;
 
+    let select_placeholders = vec!["?"; ordered_ids.len()].join(", ");
+    let select_sql =
+        format!("SELECT id, position, status FROM tasks WHERE id IN ({select_placeholders})");
+    let mut select_query = sqlx::query_as::<_, (i64, i64, String)>(&select_sql);
+    for id in ordered_ids {
+        select_query = select_query.bind(id);
+    }
+    let fetched = select_query
+        .fetch_all(&mut *tx)
+        .await
+        .context("reading current positions")?;
+    let by_id: std::collections::HashMap<i64, (i64, String)> = fetched
+        .into_iter()
+        .map(|(id, position, status)| (id, (position, status)))
+        .collect();
+
     let mut current_positions: Vec<i64> = Vec::with_capacity(ordered_ids.len());
     let mut effective_ids: Vec<i64> = Vec::with_capacity(ordered_ids.len());
     for id in ordered_ids {
-        let row: Option<(i64, String)> =
-            sqlx::query_as("SELECT position, status FROM tasks WHERE id = ?")
-                .bind(id)
-                .fetch_optional(&mut *tx)
-                .await
-                .context("reading current position")?;
-        if let Some((position, status)) = row {
+        if let Some((position, status)) = by_id.get(id) {
             let parsed =
-                Status::parse(&status).map_err(|e| anyhow!("invalid stored status: {e}"))?;
+                Status::parse(status).map_err(|e| anyhow!("invalid stored status: {e}"))?;
             if matches!(parsed, Status::Done | Status::Cancelled) {
                 continue;
             }
-            current_positions.push(position);
+            current_positions.push(*position);
             effective_ids.push(*id);
         }
     }
     if effective_ids.is_empty() {
         return Ok(0);
     }
-    let mut slots = current_positions.clone();
+    let mut slots = current_positions;
     slots.sort_unstable();
 
-    for (i, id) in effective_ids.iter().enumerate() {
-        let parking = -(i as i64) - 1;
-        sqlx::query("UPDATE tasks SET position = ? WHERE id = ?")
-            .bind(parking)
-            .bind(id)
+    let parking: Vec<i64> = (0..effective_ids.len()).map(|i| -(i as i64) - 1).collect();
+    let update_sql = build_position_case_sql(effective_ids.len());
+    for positions in [&parking, &slots] {
+        let mut update_query = sqlx::query(&update_sql);
+        for (id, position) in effective_ids.iter().zip(positions) {
+            update_query = update_query.bind(id).bind(position);
+        }
+        for id in &effective_ids {
+            update_query = update_query.bind(id);
+        }
+        update_query
             .execute(&mut *tx)
             .await
-            .context("parking row for reorder")?;
-    }
-    for (i, id) in effective_ids.iter().enumerate() {
-        sqlx::query("UPDATE tasks SET position = ? WHERE id = ?")
-            .bind(slots[i])
-            .bind(id)
-            .execute(&mut *tx)
-            .await
-            .context("writing final position")?;
+            .context("rewriting positions for reorder")?;
     }
     tx.commit().await.context("committing reorder tx")?;
     Ok(effective_ids.len())
