@@ -202,7 +202,7 @@ pub async fn get(pool: &SqlitePool, id: i64) -> Result<Option<Task>> {
 ///
 /// ### Returns
 /// - `Ok(Task)`: The freshly persisted task with its assigned `id` and `position`.
-/// - `Err`: SQLite query failed or the inserted row could not be read back.
+/// - `Err`: SQLite query failed.
 pub async fn create(pool: &SqlitePool, dto: NewTask) -> Result<Task> {
     let mut tx = pool.begin().await.context("starting create tx")?;
     let max_pos: i64 = sqlx::query_scalar("SELECT COALESCE(MAX(position), 0) FROM tasks")
@@ -210,23 +210,21 @@ pub async fn create(pool: &SqlitePool, dto: NewTask) -> Result<Task> {
         .await
         .context("reading max position")?;
     let now = Utc::now();
-    let id: i64 = sqlx::query_scalar(
+    let sql = format!(
         "INSERT INTO tasks (title, description, status, position, created_at, updated_at) \
-         VALUES (?, ?, 'todo', ?, ?, ?) RETURNING id",
-    )
-    .bind(&dto.title)
-    .bind(&dto.description)
-    .bind(max_pos + 1)
-    .bind(now)
-    .bind(now)
-    .fetch_one(&mut *tx)
-    .await
-    .context("inserting task")?;
+         VALUES (?, ?, 'todo', ?, ?, ?) RETURNING {SELECT_COLUMNS}"
+    );
+    let task = sqlx::query_as::<_, Task>(&sql)
+        .bind(&dto.title)
+        .bind(&dto.description)
+        .bind(max_pos + 1)
+        .bind(now)
+        .bind(now)
+        .fetch_one(&mut *tx)
+        .await
+        .context("inserting task")?;
     tx.commit().await.context("committing create tx")?;
-
-    get(pool, id)
-        .await?
-        .ok_or_else(|| anyhow!("task {id} vanished after insert"))
+    Ok(task)
 }
 
 /// Update the editable fields of a task.
@@ -252,6 +250,9 @@ pub async fn update(pool: &SqlitePool, id: i64, dto: UpdateTask) -> Result<Optio
     if rows == 0 {
         return Ok(None);
     }
+    // A follow-up read is required rather than RETURNING: the tasks_set_updated_at
+    // trigger (migration 0006) runs AFTER this UPDATE, so RETURNING would hand back
+    // the pre-trigger updated_at.
     get(pool, id).await
 }
 
@@ -277,6 +278,9 @@ pub async fn set_status(pool: &SqlitePool, id: i64, status: Status) -> Result<Op
     if rows == 0 {
         return Ok(None);
     }
+    // A follow-up read is required rather than RETURNING: the tasks_set_updated_at
+    // trigger (migration 0006) runs AFTER this UPDATE, so RETURNING would hand back
+    // the pre-trigger updated_at.
     get(pool, id).await
 }
 

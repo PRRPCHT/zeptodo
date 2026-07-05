@@ -155,6 +155,7 @@ pub async fn list(pool: &SqlitePool) -> Result<Vec<ApiKey>> {
 /// - `Ok(Some(ApiKey))`: A row exists with this id.
 /// - `Ok(None)`: No row matched.
 /// - `Err`: SQLite query failed.
+#[allow(dead_code)]
 pub async fn get(pool: &SqlitePool, id: i64) -> Result<Option<ApiKey>> {
     let sql = format!("SELECT {SELECT_COLUMNS} FROM api_keys WHERE id = ?");
     sqlx::query_as::<_, ApiKey>(&sql)
@@ -173,7 +174,7 @@ pub async fn get(pool: &SqlitePool, id: i64) -> Result<Option<ApiKey>> {
 ///
 /// ### Returns
 /// - `Ok(CreatedKey)`: Persisted record plus the one-time plaintext token.
-/// - `Err`: SQLite query failed or the freshly inserted row could not be read back.
+/// - `Err`: SQLite query failed.
 pub async fn create(
     pool: &SqlitePool,
     description: Option<String>,
@@ -185,22 +186,19 @@ pub async fn create(
     let key_prefix: String = plaintext.chars().take(PREFIX_LEN).collect();
     let expires_at = expiry.to_expires_at(now);
 
-    let id: i64 = sqlx::query_scalar(
+    let sql = format!(
         "INSERT INTO api_keys (key_prefix, key_hash, description, expires_at, created_at) \
-         VALUES (?, ?, ?, ?, ?) RETURNING id",
-    )
-    .bind(&key_prefix)
-    .bind(&key_hash)
-    .bind(&description)
-    .bind(expires_at)
-    .bind(now)
-    .fetch_one(pool)
-    .await
-    .context("inserting api key")?;
-
-    let record = get(pool, id)
-        .await?
-        .ok_or_else(|| anyhow!("api key {id} vanished after insert"))?;
+         VALUES (?, ?, ?, ?, ?) RETURNING {SELECT_COLUMNS}"
+    );
+    let record = sqlx::query_as::<_, ApiKey>(&sql)
+        .bind(&key_prefix)
+        .bind(&key_hash)
+        .bind(&description)
+        .bind(expires_at)
+        .bind(now)
+        .fetch_one(pool)
+        .await
+        .context("inserting api key")?;
     Ok(CreatedKey { record, plaintext })
 }
 
@@ -222,17 +220,13 @@ pub async fn update_expiry(
 ) -> Result<Option<ApiKey>> {
     let now = Utc::now();
     let expires_at = expiry.to_expires_at(now);
-    let rows = sqlx::query("UPDATE api_keys SET expires_at = ? WHERE id = ?")
+    let sql = format!("UPDATE api_keys SET expires_at = ? WHERE id = ? RETURNING {SELECT_COLUMNS}");
+    sqlx::query_as::<_, ApiKey>(&sql)
         .bind(expires_at)
         .bind(id)
-        .execute(pool)
+        .fetch_optional(pool)
         .await
-        .context("updating api key expiry")?
-        .rows_affected();
-    if rows == 0 {
-        return Ok(None);
-    }
-    get(pool, id).await
+        .context("updating api key expiry")
 }
 
 /// Update the description of an existing API key.
@@ -251,17 +245,14 @@ pub async fn update_description(
     id: i64,
     description: Option<String>,
 ) -> Result<Option<ApiKey>> {
-    let rows = sqlx::query("UPDATE api_keys SET description = ? WHERE id = ?")
+    let sql =
+        format!("UPDATE api_keys SET description = ? WHERE id = ? RETURNING {SELECT_COLUMNS}");
+    sqlx::query_as::<_, ApiKey>(&sql)
         .bind(&description)
         .bind(id)
-        .execute(pool)
+        .fetch_optional(pool)
         .await
-        .context("updating api key description")?
-        .rows_affected();
-    if rows == 0 {
-        return Ok(None);
-    }
-    get(pool, id).await
+        .context("updating api key description")
 }
 
 /// Outcome of [`verify`]: the id of the matched key.
