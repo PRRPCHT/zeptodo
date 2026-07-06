@@ -5,26 +5,26 @@ edition = "2024"
 license = "Apache-2.0"
 
 [dependencies]
-axum = "0.8"
+axum = "0.8.9"
 axum-extra = { version = "0.12.6", features = ["cookie"] }
-tokio = { version = "1", features = ["full"] }
-tower = "0.5"
+tokio = { version = "1.52.3", features = ["full"] }
+tower = "0.5.3"
 tower-http = { version = "0.7.0", features = ["fs", "trace", "set-header"] }
 sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio-rustls", "macros", "migrate", "chrono"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
-tracing-appender = "0.2"
-serde = { version = "1", features = ["derive"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["json", "env-filter"] }
+tracing-appender = "0.2.5"
+serde = { version = "1.0.228", features = ["derive"] }
 askama = "0.16.0"
-dotenvy = "0.15"
+dotenvy = "0.15.7"
 chrono = { version = "0.4.45", features = ["serde"] }
 chrono-tz = "0.10"
-anyhow = "1"
+anyhow = "1.0.103"
 thiserror = "2"
-time = "0.3.49"
-argon2 = "0.5"
-rand = "0.10.1"
-base64 = "0.22"
+time = "0.3.53"
+argon2 = "0.5.3"
+rand = "0.10.2"
+base64 = "0.22.1"
 subtle = "2.6"
 tower-sessions = { version = "0.14", features = ["signed"] }
 tower-sessions-core = { version = "0.14", default-features = false, features = ["deletion-task"] }
@@ -37,4 +37,4 @@ tower_governor = "0.8.0"
 governor = "0.10.4"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
