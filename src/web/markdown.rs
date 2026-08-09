@@ -107,4 +107,21 @@ mod tests {
         let html = render("<iframe src=\"https://evil\"></iframe>");
         assert!(!html.contains("<iframe"));
     }
+
+    /// Regression guard for RUSTSEC-2026-0213: SVG animation tags could smuggle a
+    /// `javascript:` scheme into an ancestor link through their `to`, `from` or
+    /// `values` attributes. The sanitizer must drop the tags outright.
+    #[test]
+    fn strips_svg_animation_tags() {
+        let html = render(concat!(
+            "<svg xmlns=\"http://www.w3.org/2000/svg\"><a>",
+            "<set attributeName=\"href\" to=\"javascript:alert('SET_XSS')\"></set>",
+            "<animate attributeName=\"href\" values=\"javascript:alert('ANIMATE_XSS')\"></animate>",
+            "<text y=\"30\">Click</text></a></svg>"
+        ));
+        assert!(!html.contains("<svg"));
+        assert!(!html.contains("<set"));
+        assert!(!html.contains("<animate"));
+        assert!(!html.to_lowercase().contains("javascript:"));
+    }
 }
