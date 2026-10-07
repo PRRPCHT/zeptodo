@@ -1,7 +1,5 @@
 use anyhow::{Result, anyhow};
-use argon2::Argon2;
-use argon2::password_hash::rand_core::OsRng;
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 
 /// Hash a plaintext password with Argon2id and a fresh random salt.
 ///
@@ -12,10 +10,8 @@ use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, Salt
 /// - `Ok(String)`: PHC-encoded Argon2id hash including parameters and salt.
 /// - `Err`: The Argon2 backend rejected the input.
 pub fn hash(plaintext: &str) -> Result<String> {
-    let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
-    let hash = argon2
-        .hash_password(plaintext.as_bytes(), &salt)
+    let hash = Argon2::default()
+        .hash_password(plaintext.as_bytes())
         .map_err(|e| anyhow!("argon2 hashing failed: {e}"))?;
     Ok(hash.to_string())
 }
