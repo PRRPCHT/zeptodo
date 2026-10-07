@@ -2,6 +2,8 @@
 
 An ultra-minimalist, self-hostable mono-user to-do web app, REST API-enabled. Basically the digital pendant to a sheet of paper and a pen.
 
+![Zeptodo task list in dark theme](assets/readme/zeptodo_1.png)
+
 ## Stack
 
 - Rust + Axum + SQLx (SQLite)
